@@ -1,16 +1,23 @@
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DAY = 24 * 60 * 60 * 1000;
 const timelinesNode = document.querySelector("#timelines");
+const I18N = window.ReviewI18n || {
+  locale: "en",
+  t: (key, variables = {}) => String(key).replace(/\{([a-zA-Z0-9_]+)\}/g, (match, name) => variables[name] ?? match),
+  category: (value) => value,
+  number: (value) => new Intl.NumberFormat("en").format(Number(value || 0)),
+};
+const t = (key, variables) => I18N.t(key, variables);
 
 document.querySelector("#copy-address")?.addEventListener("click", async (event) => {
   const button = event.currentTarget;
   try {
     await navigator.clipboard.writeText("report@review.vg");
     button.classList.add("is-copied");
-    button.querySelector(".copy-label").textContent = "Copied";
+    button.querySelector(".copy-label").textContent = t("common.copied");
     window.setTimeout(() => {
       button.classList.remove("is-copied");
-      button.querySelector(".copy-label").textContent = "Copy";
+      button.querySelector(".copy-label").textContent = t("common.copy");
     }, 1600);
   } catch {
     window.location.href = "mailto:report@review.vg";
@@ -26,8 +33,8 @@ async function loadTimelines() {
     renderTimelines(Array.isArray(data.events) ? data.events : []);
   } catch (error) {
     timelinesNode.replaceChildren(emptyState(
-      "Timeline temporarily unavailable",
-      "Please try again in a moment.",
+      t("timeline.errorTitle"),
+      t("timeline.errorCopy"),
     ));
     console.error(error);
   } finally {
@@ -38,8 +45,8 @@ async function loadTimelines() {
 function renderTimelines(events) {
   if (events.length === 0) {
     timelinesNode.replaceChildren(emptyState(
-      "No timelines yet",
-      "Forward a review result to begin an app timeline.",
+      t("timeline.emptyTitle"),
+      t("timeline.emptyCopy"),
     ));
     return;
   }
@@ -82,7 +89,7 @@ function groupApps(events) {
   return [...groups.values()]
     .map((app) => ({
       ...app,
-      appName: app.approvedName || "Unapproved",
+      appName: app.approvedName || t("timeline.unapproved"),
       appCategory: app.appCategory || "Uncategorized",
       isApproved: Boolean(app.approvedName),
       events: app.events.sort(compareEvents),
@@ -95,9 +102,9 @@ function groupApps(events) {
             appVersion: latestAppVersion(platformEvents),
           };
         })
-        .sort((left, right) => platformRank(left.platform) - platformRank(right.platform) || left.platform.localeCompare(right.platform)),
+        .sort((left, right) => platformRank(left.platform) - platformRank(right.platform) || left.platform.localeCompare(right.platform, I18N.locale)),
     }))
-    .sort((left, right) => right.latestEventAt - left.latestEventAt || left.appName.localeCompare(right.appName));
+    .sort((left, right) => right.latestEventAt - left.latestEventAt || left.appName.localeCompare(right.appName, I18N.locale));
 }
 
 function createSharedTimeline(apps) {
@@ -105,20 +112,20 @@ function createSharedTimeline(apps) {
   const toolbar = element("header", "timeline-board-toolbar");
   const summary = element("div", "timeline-board-summary");
   const summaryTitle = element("strong");
-  summaryTitle.textContent = "All apps";
+  summaryTitle.textContent = t("timeline.allApps");
   const summaryCopy = element("span");
-  summaryCopy.textContent = `${number(apps.length)} ${apps.length === 1 ? "app" : "apps"}`;
+  summaryCopy.textContent = appCount(apps.length);
   summary.append(summaryTitle, summaryCopy);
 
   const controls = element("div", "timeline-controls");
   controls.setAttribute("role", "group");
-  controls.setAttribute("aria-label", "Shared timeline zoom controls");
-  const zoomOut = controlButton("−", "Zoom out");
+  controls.setAttribute("aria-label", t("timeline.zoomAria"));
+  const zoomOut = controlButton("−", t("timeline.zoomOut"));
   const rangeLabel = element("span", "zoom-level");
-  rangeLabel.textContent = "30 days";
+  rangeLabel.textContent = t("timeline.latestRange");
   rangeLabel.setAttribute("aria-live", "polite");
-  const zoomIn = controlButton("+", "Zoom in");
-  const reset = controlButton("Latest", "Show the latest 30 days");
+  const zoomIn = controlButton("+", t("timeline.zoomIn"));
+  const reset = controlButton(t("timeline.latest"), t("timeline.latestAria"));
   reset.classList.add("reset-button");
   controls.append(zoomOut, rangeLabel, zoomIn, reset);
   toolbar.append(summary, controls);
@@ -126,37 +133,37 @@ function createSharedTimeline(apps) {
   const filterBar = element("div", "timeline-filter-bar");
   const categoryField = element("label", "timeline-filter-field");
   const categoryLabel = element("span");
-  categoryLabel.textContent = "Category";
+  categoryLabel.textContent = t("timeline.category");
   const categorySelect = element("select", "timeline-filter-input timeline-filter-select");
-  categorySelect.setAttribute("aria-label", "Filter by app category");
+  categorySelect.setAttribute("aria-label", t("timeline.filterCategory"));
   const allCategories = document.createElement("option");
   allCategories.value = "";
-  allCategories.textContent = "All categories";
+  allCategories.textContent = t("timeline.allCategories");
   categorySelect.append(allCategories);
   const categories = [...new Set(apps.map((app) => app.appCategory))]
-    .sort((left, right) => left.localeCompare(right));
+    .sort((left, right) => localizedCategory(left).localeCompare(localizedCategory(right), I18N.locale));
   for (const category of categories) {
     const option = document.createElement("option");
     option.value = category;
-    option.textContent = category;
+    option.textContent = localizedCategory(category);
     categorySelect.append(option);
   }
   categoryField.append(categoryLabel, categorySelect);
 
   const appIdField = element("label", "timeline-filter-field");
   const appIdLabel = element("span");
-  appIdLabel.textContent = "App ID";
+  appIdLabel.textContent = t("timeline.appId");
   const appIdInput = element("input", "timeline-filter-input");
   appIdInput.type = "search";
   appIdInput.inputMode = "numeric";
   appIdInput.autocomplete = "off";
-  appIdInput.placeholder = "Enter App Store ID";
-  appIdInput.setAttribute("aria-label", "Filter by App Store app ID");
+  appIdInput.placeholder = t("timeline.appIdPlaceholder");
+  appIdInput.setAttribute("aria-label", t("timeline.filterAppId"));
   appIdField.append(appIdLabel, appIdInput);
 
   const clearFilters = element("button", "timeline-filter-clear");
   clearFilters.type = "button";
-  clearFilters.textContent = "Clear";
+  clearFilters.textContent = t("timeline.clear");
   clearFilters.disabled = true;
   const filterStatus = element("span", "timeline-filter-status");
   filterStatus.setAttribute("aria-live", "polite");
@@ -167,7 +174,7 @@ function createSharedTimeline(apps) {
   const appRows = [];
   for (const app of apps) {
     const group = element("section", "timeline-app-group");
-    group.setAttribute("aria-label", `${app.appName} review timeline`);
+    group.setAttribute("aria-label", t("timeline.appAria", { app: app.appName }));
     const identity = createAppIdentity(app);
     identity.style.gridRow = `1 / span ${app.platforms.length}`;
     for (const cell of identity.children) {
@@ -191,7 +198,7 @@ function createSharedTimeline(apps) {
       svg.classList.add("timeline-lane");
       svg.style.gridRow = String(row);
       svg.setAttribute("role", "group");
-      svg.setAttribute("aria-label", `${app.appName} ${platform.platform} review durations`);
+      svg.setAttribute("aria-label", t("timeline.laneAria", { app: app.appName, platform: platform.platform }));
       group.append(platformLabel, svg);
       lanes.push({ svg, appName: app.appName, platform: platform.platform, events: platform.events });
     });
@@ -207,21 +214,21 @@ function createSharedTimeline(apps) {
   const axis = document.createElementNS(SVG_NS, "svg");
   axis.classList.add("timeline-shared-axis");
   axis.setAttribute("role", "img");
-  axis.setAttribute("aria-label", "Shared review date axis");
+  axis.setAttribute("aria-label", t("timeline.axisAria"));
   axisRow.append(axisIconSpacer, axisSpacer, axis);
   body.append(axisRow);
 
   const footer = element("footer", "timeline-board-footer");
   const hint = element("p", "timeline-interaction-hint");
-  hint.textContent = "Hover or focus a bar for details · use controls to zoom · drag to pan · swipe to scroll";
+  hint.textContent = t("timeline.hint");
   footer.append(hint);
 
   const tooltip = element("div", "timeline-tooltip");
   tooltip.setAttribute("role", "tooltip");
   tooltip.setAttribute("aria-hidden", "true");
   const noMatches = emptyState(
-    "No matching apps",
-    "Try another category or App Store ID.",
+    t("timeline.noMatchesTitle"),
+    t("timeline.noMatchesCopy"),
   );
   noMatches.classList.add("timeline-filter-empty");
   noMatches.hidden = true;
@@ -239,9 +246,9 @@ function createSharedTimeline(apps) {
       row.group.hidden = !visible;
       if (visible) visibleApps += 1;
     }
-    summaryTitle.textContent = hasFilters ? "Filtered apps" : "All apps";
-    summaryCopy.textContent = `${number(visibleApps)} ${visibleApps === 1 ? "app" : "apps"}`;
-    filterStatus.textContent = hasFilters ? `${number(visibleApps)} shown` : "";
+    summaryTitle.textContent = hasFilters ? t("timeline.filteredApps") : t("timeline.allApps");
+    summaryCopy.textContent = appCount(visibleApps);
+    filterStatus.textContent = hasFilters ? t("timeline.shown", { count: number(visibleApps) }) : "";
     clearFilters.disabled = !hasFilters;
     noMatches.hidden = visibleApps !== 0;
     body.hidden = visibleApps === 0;
@@ -275,8 +282,8 @@ function createAppIdentity(app) {
   title.textContent = app.appName;
   const meta = element("div", "timeline-app-meta");
   const category = element("span", "timeline-app-category");
-  category.textContent = app.appCategory;
-  category.title = app.appCategory;
+  category.textContent = localizedCategory(app.appCategory);
+  category.title = localizedCategory(app.appCategory);
   meta.append(category);
   nameBlock.append(title, meta);
   identity.append(iconCell, nameBlock);
@@ -292,7 +299,7 @@ function createAppIcon(group) {
   const image = document.createElement("img");
   image.className = "app-icon";
   image.src = group.appIconUrl;
-  image.alt = `${group.appName} icon`;
+  image.alt = t("timeline.iconAlt", { app: group.appName });
   image.loading = "lazy";
   image.referrerPolicy = "no-referrer";
   image.addEventListener("error", () => image.replaceWith(fallback), { once: true });
@@ -303,7 +310,7 @@ function createAppIcon(group) {
   link.href = storeUrl;
   link.target = "_blank";
   link.rel = "noopener noreferrer";
-  link.setAttribute("aria-label", `Open ${group.appName} in the App Store`);
+  link.setAttribute("aria-label", t("timeline.openInStore", { app: group.appName }));
   link.append(image);
   return link;
 }
@@ -515,13 +522,20 @@ class SharedTimelineChart {
       const startX = this.x(clippedStart);
       const endX = this.x(clippedEnd);
       const accepted = point.event.status === "success";
-      const outcome = accepted ? "Accepted" : "Rejected";
-      const version = point.event.appVersion ? `, version ${point.event.appVersion}` : "";
-      const label = `${lane.appName}, ${lane.platform}. ${outcome}${version}. Submitted ${dateTime(point.startTime)}. Apple replied ${dateTime(point.endTime)}.`;
+      const outcome = accepted ? t("timeline.accepted") : t("timeline.rejected");
+      const version = point.event.appVersion
+        ? t("timeline.versionPhrase", { version: point.event.appVersion })
+        : "";
+      const label = t("timeline.eventAria", {
+        app: lane.appName,
+        platform: lane.platform,
+        outcome,
+        version,
+        submitted: dateTime(point.startTime),
+        replied: dateTime(point.endTime),
+      });
       const reason = accepted ? "" : publicRejectionReason(point.event.rejectionReason);
-      const forwardingSource = publicForwardingSource(point.event.forwardedFrom);
-      const sourceLabel = `${label} Forwarded from ${forwardingSource}.`;
-      const accessibleLabel = reason ? `${sourceLabel} ${reason}` : sourceLabel;
+      const accessibleLabel = reason ? `${label} ${reason}` : label;
 
       const marker = svgElement("g", `timeline-event ${accepted ? "success" : "issue"}`);
       marker.setAttribute("tabindex", "0");
@@ -589,7 +603,13 @@ class SharedTimelineChart {
     const heading = element("strong", "timeline-tooltip-title");
     heading.textContent = `${point.appName} · ${point.event.platform}`;
     const timing = element("span", "timeline-tooltip-timing");
-    timing.textContent = `${accepted ? "Accepted" : "Rejected"}${point.event.appVersion ? ` · Version ${point.event.appVersion}` : ""}\nSubmitted ${dateTime(point.startTime)}\nApple replied ${dateTime(point.endTime)}\nForwarded from ${publicForwardingSource(point.event.forwardedFrom)}`;
+    const timingLines = [
+      accepted ? t("timeline.accepted") : t("timeline.rejected"),
+      ...(point.event.appVersion ? [t("tooltip.version", { version: point.event.appVersion })] : []),
+      t("tooltip.submitted", { date: dateTime(point.startTime) }),
+      t("tooltip.replied", { date: dateTime(point.endTime) }),
+    ];
+    timing.textContent = timingLines.join("\n");
     const content = [heading, timing];
     const reason = accepted ? "" : publicRejectionReason(point.event.rejectionReason);
     if (reason) {
@@ -699,30 +719,30 @@ function formatAxisDate(timestamp, span) {
       : span <= 2 * 365 * DAY
         ? { month: "short", year: "numeric" }
         : { year: "numeric" };
-  return new Intl.DateTimeFormat(undefined, options).format(new Date(timestamp));
+  return new Intl.DateTimeFormat(I18N.locale, options).format(new Date(timestamp));
 }
 
 function formatRange(span) {
   if (span < 2 * DAY) {
     const hours = Math.max(1, Math.round(span / (60 * 60 * 1000)));
-    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+    return timeCount("hour", hours);
   }
   if (span < 60 * DAY) {
     const days = Math.max(2, Math.round(span / DAY));
-    return `${days} days`;
+    return timeCount("day", days);
   }
   if (span < 2 * 365 * DAY) {
     const months = Math.max(2, Math.round(span / (30 * DAY)));
-    return `${months} months`;
+    return timeCount("month", months);
   }
   const years = Math.max(2, Math.round(span / (365 * DAY)));
-  return `${years} years`;
+  return timeCount("year", years);
 }
 
 function dateTime(value) {
   const timestamp = typeof value === "number" ? value : Date.parse(value);
-  if (!Number.isFinite(timestamp)) return "Unknown date";
-  return new Intl.DateTimeFormat(undefined, {
+  if (!Number.isFinite(timestamp)) return t("time.unknownDate");
+  return new Intl.DateTimeFormat(I18N.locale, {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -752,10 +772,6 @@ function eventTime(event) {
 function publicRejectionReason(value) {
   if (typeof value !== "string") return "";
   return value.replace(/(?:^|\n)\s*Next Steps\b[\s\S]*$/i, "").trim();
-}
-
-function publicForwardingSource(value) {
-  return typeof value === "string" && value.trim() ? value.trim() : "Unknown";
 }
 
 function normalizedPublicName(value) {
@@ -823,7 +839,21 @@ function clamp(value, minimum, maximum) {
 }
 
 function number(value) {
-  return new Intl.NumberFormat().format(Number(value || 0));
+  return I18N.number(value);
+}
+
+function appCount(value) {
+  const key = Number(value) === 1 ? "timeline.appCount.one" : "timeline.appCount.other";
+  return t(key, { count: number(value) });
+}
+
+function timeCount(unit, value) {
+  const key = Number(value) === 1 ? `time.${unit}.one` : `time.${unit}.other`;
+  return t(key, { count: number(value) });
+}
+
+function localizedCategory(value) {
+  return I18N.category(value);
 }
 
 loadTimelines();

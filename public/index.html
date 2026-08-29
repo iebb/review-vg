@@ -3,42 +3,56 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Community-shared App Store review outcomes and review timelines." />
+    <meta name="description" content="Community-shared App Store review outcomes and review timelines." data-i18n-content="meta.description" />
     <meta name="theme-color" content="#f6f3ea" />
     <title>Review.vg — App review, in the open</title>
-    <link rel="stylesheet" href="/styles.css?v=20260829-mobile2" />
-    <script src="/app.js?v=20260829-mobile2" defer></script>
+    <link rel="icon" href="/favicon.ico?v=20260829" sizes="any" />
+    <link rel="icon" type="image/png" href="/favicon-32.png?v=20260829" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=20260829" />
+    <link rel="stylesheet" href="/styles.css?v=20260829-i18n1" />
+    <script src="/i18n.js?v=20260829-i18n1" defer></script>
+    <script src="/app.js?v=20260829-i18n1" defer></script>
   </head>
   <body>
     <div class="grain" aria-hidden="true"></div>
     <header class="site-header shell">
-      <a class="brand" href="/" aria-label="Review.vg home">
+      <a class="brand" href="/" aria-label="Review.vg home" data-i18n-aria="nav.homeAria">
         <span class="brand-mark" aria-hidden="true">R</span>
         <span>review<span class="brand-dot">.</span>vg</span>
       </a>
-      <a class="header-link" href="#how-it-works">How it works <span aria-hidden="true">↘</span></a>
+      <div class="header-actions">
+        <label class="language-control">
+          <span class="visually-hidden" data-i18n="nav.language">Language</span>
+          <select id="language-picker" aria-label="Language" data-i18n-aria="nav.language">
+            <option value="en">English</option>
+            <option value="zh-CN">简体中文</option>
+            <option value="es">Español</option>
+            <option value="ja">日本語</option>
+          </select>
+        </label>
+        <a class="header-link" href="#how-it-works"><span data-i18n="nav.how">How it works</span> <span aria-hidden="true">↘</span></a>
+      </div>
     </header>
 
     <main>
       <section class="hero shell">
         <div class="hero-copy">
-          <p class="eyebrow"><span class="live-dot"></span> Community signal</p>
-          <h1>App review,<br /><em>in the open.</em></h1>
-          <p class="hero-lede">
+          <h1 data-i18n-html="hero.title">App review,<br /><em>in the open.</em></h1>
+          <p class="hero-lede" data-i18n="hero.lede">
             Real App Store review outcomes, shared by developers. See what passed, what did not,
             and how long each review took.
           </p>
-          <div class="email-card" aria-label="Report by email">
+          <div class="email-card" aria-label="Report by email" data-i18n-aria="hero.emailAria">
             <div>
-              <span class="email-label">Forward Apple’s email to</span>
+              <span class="email-label" data-i18n="hero.emailLabel">Forward Apple’s email to</span>
               <strong id="report-address">report@review.vg</strong>
             </div>
-            <button class="copy-button" id="copy-address" type="button" aria-label="Copy report email address">
+            <button class="copy-button" id="copy-address" type="button" aria-label="Copy report email address" data-i18n-aria="hero.copyAria">
               <span class="copy-icon" aria-hidden="true"></span>
-              <span class="copy-label">Copy</span>
+              <span class="copy-label" data-i18n="common.copy">Copy</span>
             </button>
           </div>
-          <p class="email-hint">
+          <p class="email-hint" data-i18n-html="hero.hint">
             Forward one email normally, or attach many Apple review emails to a single message. Any address at
             <code>review.vg</code> reaches the same inbox.
           </p>
@@ -48,12 +62,12 @@
           <div class="orbit orbit-one"></div>
           <div class="orbit orbit-two"></div>
           <div class="signal-card signal-card-back">
-            <span>Waiting for review</span>
-            <strong>12h 09m</strong>
+            <span data-i18n="hero.waiting">Waiting for review</span>
+            <strong data-i18n="hero.duration">12h 09m</strong>
           </div>
           <div class="signal-card signal-card-front">
-            <div class="signal-topline"><span class="status-glyph success">✓</span><span>Review complete</span></div>
-            <strong>Approved</strong>
+            <div class="signal-topline"><span class="status-glyph success">✓</span><span data-i18n="hero.complete">Review complete</span></div>
+            <strong data-i18n="hero.approved">Approved</strong>
             <div class="mini-timeline"><span></span><span></span><span></span></div>
           </div>
           <div class="spark spark-one">✦</div>
@@ -64,13 +78,12 @@
       <section class="timeline-section shell" aria-labelledby="timeline-heading">
         <div class="timeline-header">
           <div>
-            <p class="section-kicker">Review history</p>
-            <h2 id="timeline-heading">Outcome timelines</h2>
-            <p>One shared chart, one y-series per app/OS. It opens on the latest 30 days.</p>
+            <h2 id="timeline-heading" data-i18n="timeline.title">Outcome timelines</h2>
+            <p data-i18n="timeline.intro">One shared chart, one y-series per app/OS. It opens on the latest 30 days.</p>
           </div>
-          <div class="timeline-legend" aria-label="Timeline legend">
-            <span><i class="issue" aria-hidden="true"></i>Rejected</span>
-            <span><i class="success" aria-hidden="true"></i>Accepted</span>
+          <div class="timeline-legend" aria-label="Timeline legend" data-i18n-aria="timeline.legendAria">
+            <span><i class="issue" aria-hidden="true"></i><span data-i18n="timeline.rejected">Rejected</span></span>
+            <span><i class="success" aria-hidden="true"></i><span data-i18n="timeline.accepted">Accepted</span></span>
           </div>
         </div>
         <div id="timelines" class="timeline-list" aria-live="polite" aria-busy="true">
@@ -80,53 +93,51 @@
 
       <section class="how shell" id="how-it-works" aria-labelledby="how-heading">
         <div class="how-intro">
-          <p class="section-kicker">A useful signal, together</p>
-          <h2 id="how-heading">Forward once.<br />Help everyone.</h2>
+          <h2 id="how-heading" data-i18n-html="how.title">Forward once.<br />Help everyone.</h2>
         </div>
         <ol class="steps">
           <li>
             <span class="step-number">01</span>
-            <div><h3>Find Apple’s email</h3><p>Use the App Store Connect message sent by <code>no_reply@email.apple.com</code>.</p></div>
+            <div><h3 data-i18n="how.step1Title">Find Apple’s email</h3><p data-i18n-html="how.step1Copy">Use the App Store Connect message sent by <code>no_reply@email.apple.com</code>.</p></div>
           </li>
           <li>
             <span class="step-number">02</span>
             <div>
-              <h3>Forward or attach</h3>
-              <p>
+              <h3 data-i18n="how.step2Title">Forward or attach</h3>
+              <p data-i18n-html="how.step2Copy">
                 Send one unchanged, or attach multiple Apple emails to one message addressed to <code>report@review.vg</code>.
               </p>
             </div>
           </li>
           <li>
             <span class="step-number">03</span>
-            <div><h3>We publish the facts</h3><p>Review status, timing, app, platform, and guideline—never your forwarding address.</p></div>
+            <div><h3 data-i18n="how.step3Title">We publish the facts</h3><p data-i18n="how.step3Copy">Review status, timing, app, platform, and guideline—never the forwarding address.</p></div>
           </li>
         </ol>
       </section>
 
       <section class="auto-forward shell" aria-labelledby="auto-forward-heading">
         <div>
-          <p class="section-kicker">Automatic forwarding</p>
-          <h2 id="auto-forward-heading">Share every outcome automatically.</h2>
-          <p class="auto-forward-lede">
+          <h2 id="auto-forward-heading" data-i18n="forward.title">Share every outcome automatically.</h2>
+          <p class="auto-forward-lede" data-i18n-html="forward.lede">
             Forward all matching messages to <code>report@review.vg</code>. The rule should require Apple’s sender
             and either review-result subject phrase.
           </p>
         </div>
         <div class="forward-rule-card">
           <div class="forward-rule">
-            <span class="forward-rule-label">From</span>
+            <span class="forward-rule-label" data-i18n="forward.from">From</span>
             <div class="forward-rule-value"><code>no_reply@email.apple.com</code></div>
           </div>
           <div class="forward-rule">
-            <span class="forward-rule-label">Subject contains either</span>
+            <span class="forward-rule-label" data-i18n="forward.subjectEither">Subject contains either</span>
             <div class="forward-rule-value">
               <code>submission is complete</code>
-              <span class="forward-rule-or">or</span>
+              <span class="forward-rule-or" data-i18n="forward.or">or</span>
               <code>There's an issue with your</code>
             </div>
           </div>
-          <p class="gmail-auto-confirm">
+          <p class="gmail-auto-confirm" data-i18n-html="forward.gmail">
             <strong>Using Gmail?</strong> The forwarding verification sent to <code>report@review.vg</code> is confirmed automatically.
           </p>
         </div>
@@ -135,19 +146,16 @@
       <section class="privacy shell">
         <span class="privacy-mark" aria-hidden="true">◎</span>
         <div>
-          <h2>Built for useful transparency, with restraint.</h2>
-          <p>
-            Raw emails, developer names, and organization UUIDs are not published. Each result shows the forwarding
-            email address that supplied it and is keyed by its App Store submission ID.
-          </p>
+          <h2 data-i18n="privacy.title">Built for useful transparency, with restraint.</h2>
+          <p data-i18n="privacy.copy">Raw emails, developer names, forwarding addresses, and organization UUIDs are never published. Results are deduplicated by App Store submission ID.</p>
         </div>
       </section>
     </main>
 
     <footer class="site-footer shell">
       <a class="brand footer-brand" href="/"><span class="brand-mark">R</span><span>review<span class="brand-dot">.</span>vg</span></a>
-      <p>Independent community project. Not affiliated with Apple.</p>
-      <p>Built on Cloudflare.</p>
+      <p data-i18n="footer.independent">Independent community project. Not affiliated with Apple.</p>
+      <p data-i18n="footer.cloudflare">Built on Cloudflare.</p>
     </footer>
   </body>
 </html>

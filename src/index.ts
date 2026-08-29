@@ -18,7 +18,6 @@ interface TimelineEventRow {
   submitted_at: string | null;
   latest_event_at: string;
   rejection_reason: string | null;
-  forwarded_from: string | null;
   has_approved: number;
 }
 
@@ -144,7 +143,7 @@ export async function getTimeline(env: Pick<Env, "DB">): Promise<Response> {
                 ELSE NULL
               END AS app_name,
               r.platform, r.app_store_id, r.app_version, r.status, r.submitted_at,
-              r.latest_event_at, r.rejection_reason, r.forwarded_from, eligible.has_approved,
+              r.latest_event_at, r.rejection_reason, eligible.has_approved,
               COALESCE(
                 r.app_icon_url,
                 (
@@ -191,7 +190,6 @@ export async function getTimeline(env: Pick<Env, "DB">): Promise<Response> {
         submittedAt: event.submitted_at,
         occurredAt: event.latest_event_at,
         rejectionReason: event.status === "issue" ? event.rejection_reason : null,
-        forwardedFrom: event.forwarded_from,
       })),
     },
     200,

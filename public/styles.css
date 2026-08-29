@@ -24,6 +24,15 @@
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
+.visually-hidden {
+  width: 1px;
+  height: 1px;
+  position: absolute;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 body {
   margin: 0;
   color: var(--ink);
@@ -47,14 +56,19 @@ a { color: inherit; }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -0.045em; text-decoration: none; font-size: 21px; }
 .brand-mark { width: 31px; height: 31px; display: grid; place-items: center; border: 1.5px solid var(--ink); border-radius: 9px 9px 9px 3px; font: 800 16px/1 "Geologica", sans-serif; transform: rotate(-3deg); }
 .brand-dot { color: var(--coral); }
+.header-actions { display: flex; align-items: center; gap: 18px; }
+.language-control { position: relative; display: inline-flex; align-items: center; }
+.language-control::after { content: "⌄"; position: absolute; right: 10px; top: 50%; color: var(--muted); font-size: 11px; pointer-events: none; transform: translateY(-58%); }
+.language-control select { min-width: 112px; height: 34px; appearance: none; padding: 0 28px 0 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 10px; outline: none; background: rgba(255, 253, 248, .58); font-size: 11px; font-weight: 680; cursor: pointer; }
+.language-control select:hover, .language-control select:focus-visible { color: var(--ink); border-color: rgba(23, 32, 30, .32); background: var(--card); }
 .header-link { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 650; }
 .header-link:hover { color: var(--ink); }
 
 .hero { min-height: 670px; display: grid; grid-template-columns: 1.08fr .92fr; align-items: center; gap: 76px; padding: 72px 0 100px; }
-.eyebrow, .section-kicker { margin: 0 0 20px; color: var(--green); font-size: 12px; line-height: 1; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
-.live-dot { width: 8px; height: 8px; display: inline-block; margin-right: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 5px rgba(23, 107, 82, .12); }
 .hero h1 { margin: 0; font: 520 clamp(64px, 8vw, 106px)/.86 "Geologica", sans-serif; letter-spacing: -.065em; }
 .hero h1 em { color: var(--coral); font-weight: 400; }
+html:lang(es) .hero h1 { font-size: clamp(58px, 6.6vw, 90px); line-height: .9; letter-spacing: -.055em; }
+html:lang(zh-CN) .hero h1, html:lang(ja) .hero h1 { font-size: clamp(60px, 7vw, 96px); line-height: .96; letter-spacing: -.045em; }
 .hero-lede { width: min(590px, 100%); margin: 35px 0 31px; color: var(--muted); font-size: 19px; line-height: 1.55; letter-spacing: -.018em; }
 .email-card { width: min(545px, 100%); display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 15px 15px 15px 22px; border: 1px solid rgba(23, 32, 30, .2); border-radius: 16px; background: var(--card); box-shadow: 0 12px 34px rgba(40, 49, 43, .08); }
 .email-label { display: block; margin-bottom: 3px; color: var(--muted); font-size: 11px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
@@ -268,9 +282,13 @@ code { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, mono
 @media (max-width: 680px) {
   .shell { width: min(100% - 28px, 1180px); }
   .site-header { height: 72px; }
+  .header-actions { gap: 0; }
+  .language-control select { min-width: 104px; }
   .header-link { display: none; }
   .hero { min-height: auto; padding: 53px 0 78px; }
   .hero h1 { font-size: clamp(57px, 19vw, 82px); }
+  html:lang(es) .hero h1 { font-size: clamp(48px, 13.7vw, 67px); }
+  html:lang(zh-CN) .hero h1, html:lang(ja) .hero h1 { font-size: clamp(49px, 14vw, 69px); }
   .hero-lede { font-size: 17px; }
   .email-card { align-items: stretch; padding: 15px; }
   .email-label { font-size: 9px; }

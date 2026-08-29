@@ -13,7 +13,7 @@ interface FakeTimelineRow {
   submitted_at: string;
   latest_event_at: string;
   rejection_reason: string | null;
-  forwarded_from: string | null;
+  forwarded_from?: string | null;
   has_approved: number;
 }
 
@@ -59,9 +59,10 @@ describe("public timeline", () => {
       appName: null,
       appStoreId: "1234567890",
       appCategory: null,
-      forwardedFrom: "developer@example.com",
     });
     expect(JSON.stringify(body)).not.toContain("Private pre-release name");
+    expect(JSON.stringify(body)).not.toContain("forwardedFrom");
+    expect(JSON.stringify(body)).not.toContain("developer@example.com");
   });
 
   it("identifies manual and Gmail automatic forwarding sources", () => {
