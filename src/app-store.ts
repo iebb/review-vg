@@ -3,7 +3,7 @@ const MAX_LOOKUP_IDS = 50;
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const LOOKUP_TIMEOUT_MS = 5_000;
 
-type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+export type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 export interface AppStoreMetadata {
   iconUrl: string | null;

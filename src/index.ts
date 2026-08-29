@@ -1,6 +1,6 @@
 import { extractReviewsFromEmail, parseInboundEmail } from "./email-ingest";
 import { approveGmailForwarding, gmailForwardingConfirmationUrl } from "./gmail-forwarding";
-import { fetchAppStoreMetadata, type AppStoreMetadata } from "./app-store";
+import { fetchAppStoreMetadata, type AppStoreMetadata, type Fetcher } from "./app-store";
 import type { ParsedReviewEmail } from "./parser";
 
 const REPORT_ADDRESS = "report@review.vg";
@@ -8,6 +8,7 @@ const MAX_EMAIL_BYTES = 20 * 1024 * 1024;
 const RAW_EMAIL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const RAW_EMAIL_MAX_MESSAGES = 1000;
 const RAW_EMAIL_CHUNK_BYTES = 1_500_000;
+const APP_METADATA_BACKFILL_LIMIT = 50;
 
 interface TimelineEventRow {
   submission_id: string;
@@ -43,11 +44,6 @@ interface ExistingMetadataRow {
   app_category: string | null;
 }
 
-interface StoredReview extends ParsedReviewEmail {
-  appIconUrl: string | null;
-  appCategory: string | null;
-}
-
 export default {
   async fetch(request, env): Promise<Response> {
     const url = new URL(request.url);
@@ -67,6 +63,9 @@ export default {
     headers.set("Referrer-Policy", "no-referrer");
     headers.set("X-Content-Type-Options", "nosniff");
     headers.set("X-Frame-Options", "DENY");
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      headers.set("Link", '<https://review.vg/>; rel="canonical"');
+    }
     if (url.pathname.endsWith(".css") || url.pathname.endsWith(".js")) {
       headers.set("Cache-Control", "public, max-age=3600, must-revalidate");
     }
@@ -110,10 +109,10 @@ export default {
         return;
       }
 
-      const reviewsWithMetadata = await enrichReviewMetadata(env.DB, extracted.reviews);
+      await ensureApprovedAppMetadata(env.DB, extracted.reviews);
       const stored = await storeReviews(
         env.DB,
-        reviewsWithMetadata,
+        extracted.reviews,
         forwardedFromAddress(parsedMime, message.from),
       );
       console.log(
@@ -137,6 +136,17 @@ export default {
 
   async scheduled(_controller, env): Promise<void> {
     await purgeRawEmails(env.DB);
+    try {
+      const result = await backfillApprovedAppMetadata(env.DB);
+      if (result.appsChecked > 0) {
+        console.log(JSON.stringify({ event: "app_store_metadata_backfilled", ...result }));
+      }
+    } catch (error) {
+      console.warn(JSON.stringify({
+        event: "app_store_metadata_backfill_failed",
+        error: error instanceof Error ? error.name : "UnknownError",
+      }));
+    }
   },
 } satisfies ExportedHandler<Env>;
 
@@ -211,6 +221,46 @@ export async function purgeRawEmails(db: D1Database): Promise<void> {
   ]);
 }
 
+export async function backfillApprovedAppMetadata(
+  db: D1Database,
+  fetcher: Fetcher = fetch,
+): Promise<{ appsChecked: number; appsUpdated: number }> {
+  const missing = await db.prepare(
+    `WITH approved_apps AS (
+       SELECT app_store_id,
+              MAX(COALESCE(successful_at, latest_event_at)) AS approved_at
+         FROM reviews
+        WHERE status = 'success'
+          AND app_store_id IS NOT NULL
+        GROUP BY app_store_id
+     )
+     SELECT approved.app_store_id,
+            metadata.app_icon_url,
+            metadata.app_category
+       FROM approved_apps AS approved
+       LEFT JOIN app_metadata AS metadata
+         ON metadata.app_store_id = approved.app_store_id
+      WHERE metadata.app_store_id IS NULL
+         OR metadata.app_icon_url IS NULL
+         OR metadata.app_category IS NULL
+      ORDER BY COALESCE(metadata.last_checked_at, '') ASC,
+               approved.approved_at DESC,
+               approved.app_store_id
+      LIMIT ${APP_METADATA_BACKFILL_LIMIT}`,
+  ).all<ExistingMetadataRow>();
+  const appStoreIds = missing.results.map((row) => row.app_store_id);
+  if (appStoreIds.length === 0) return { appsChecked: 0, appsUpdated: 0 };
+
+  const metadata = await fetchAppStoreMetadata(appStoreIds, fetcher);
+  await storeAppMetadataChecks(db, appStoreIds, metadata);
+  const appsUpdated = appStoreIds.filter((appStoreId) => {
+    const value = metadata.get(appStoreId);
+    return Boolean(value?.iconUrl || value?.category);
+  }).length;
+
+  return { appsChecked: appStoreIds.length, appsUpdated };
+}
+
 async function sha256Hex(value: ArrayBuffer): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", value);
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -234,30 +284,11 @@ export async function getTimeline(env: Pick<Env, "DB">): Promise<Response> {
        SELECT r.submission_id, r.app_name,
               r.platform, r.app_store_id, r.app_version, r.status, r.submitted_at,
               r.latest_event_at, r.guideline_code, r.guideline_title, eligible.has_approved,
-              COALESCE(
-                r.app_icon_url,
-                (
-                  SELECT icon.app_icon_url
-                    FROM reviews AS icon
-                   WHERE icon.app_store_id = r.app_store_id
-                     AND icon.app_icon_url IS NOT NULL
-                   ORDER BY icon.successful_at DESC, icon.latest_event_at DESC
-                   LIMIT 1
-                )
-              ) AS app_icon_url,
-              COALESCE(
-                r.app_category,
-                (
-                  SELECT category.app_category
-                    FROM reviews AS category
-                   WHERE category.app_store_id = r.app_store_id
-                     AND category.app_category IS NOT NULL
-                   ORDER BY category.successful_at DESC, category.latest_event_at DESC
-                   LIMIT 1
-                )
-              ) AS app_category
+              metadata.app_icon_url,
+              metadata.app_category
          FROM reviews AS r
          JOIN eligible_apps AS eligible ON eligible.app_store_id = r.app_store_id
+         LEFT JOIN app_metadata AS metadata ON metadata.app_store_id = r.app_store_id
         ORDER BY r.latest_event_at DESC
         LIMIT 1000
      )
@@ -285,28 +316,31 @@ export async function getTimeline(env: Pick<Env, "DB">): Promise<Response> {
       })),
     },
     200,
-    { "Cache-Control": "public, max-age=30, s-maxage=60" },
+    {
+      "Cache-Control": "public, max-age=30, s-maxage=60",
+      "X-Robots-Tag": "noindex, nofollow",
+    },
   );
 }
 
-async function enrichReviewMetadata(
+async function ensureApprovedAppMetadata(
   db: D1Database,
   reviews: ParsedReviewEmail[],
-): Promise<StoredReview[]> {
-  const appStoreIds = [...new Set(reviews.map((review) => review.appStoreId))];
-  if (appStoreIds.length === 0) {
-    return reviews.map((review) => ({ ...review, appIconUrl: null, appCategory: null }));
-  }
+): Promise<void> {
+  const appStoreIds = [...new Set(
+    reviews
+      .filter((review) => review.status === "success")
+      .map((review) => review.appStoreId),
+  )];
+  if (appStoreIds.length === 0) return;
 
   const placeholders = appStoreIds.map(() => "?").join(", ");
   const existing = await db
     .prepare(
-      `SELECT app_store_id,
-              MAX(app_icon_url) AS app_icon_url,
-              MAX(app_category) AS app_category
-         FROM reviews
+      `SELECT app_store_id, app_icon_url, app_category
+         FROM app_metadata
         WHERE app_store_id IN (${placeholders})
-        GROUP BY app_store_id`,
+        ORDER BY app_store_id`,
     )
     .bind(...appStoreIds)
     .all<ExistingMetadataRow>();
@@ -315,25 +349,16 @@ async function enrichReviewMetadata(
     { iconUrl: row.app_icon_url, category: row.app_category },
   ]));
 
-  const approvedIds = [...new Set(
-    reviews
-      .filter((review) => {
-        const current = metadata.get(review.appStoreId);
-        return review.status === "success" && (!current?.iconUrl || !current.category);
-      })
-      .map((review) => review.appStoreId),
-  )];
+  const approvedIds = appStoreIds.filter((appStoreId) => {
+    const current = metadata.get(appStoreId);
+    return !current?.iconUrl || !current.category;
+  });
 
   for (let offset = 0; offset < approvedIds.length; offset += 50) {
+    const batch = approvedIds.slice(offset, offset + 50);
     try {
-      const fetched = await fetchAppStoreMetadata(approvedIds.slice(offset, offset + 50));
-      for (const [appStoreId, value] of fetched) {
-        const current = metadata.get(appStoreId);
-        metadata.set(appStoreId, {
-          iconUrl: value.iconUrl ?? current?.iconUrl ?? null,
-          category: value.category ?? current?.category ?? null,
-        });
-      }
+      const fetched = await fetchAppStoreMetadata(batch);
+      await storeAppMetadataChecks(db, batch, fetched);
     } catch (error) {
       console.warn(JSON.stringify({
         event: "app_store_metadata_lookup_failed",
@@ -341,17 +366,32 @@ async function enrichReviewMetadata(
       }));
     }
   }
+}
 
-  return reviews.map((review) => ({
-    ...review,
-    appIconUrl: metadata.get(review.appStoreId)?.iconUrl ?? null,
-    appCategory: metadata.get(review.appStoreId)?.category ?? null,
+async function storeAppMetadataChecks(
+  db: D1Database,
+  appStoreIds: string[],
+  metadata: Map<string, AppStoreMetadata>,
+): Promise<void> {
+  if (appStoreIds.length === 0) return;
+  await db.batch(appStoreIds.map((appStoreId) => {
+    const value = metadata.get(appStoreId);
+    return db.prepare(
+      `INSERT INTO app_metadata (
+         app_store_id, app_icon_url, app_category, last_checked_at, updated_at
+       ) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       ON CONFLICT(app_store_id) DO UPDATE SET
+         app_icon_url = COALESCE(excluded.app_icon_url, app_metadata.app_icon_url),
+         app_category = COALESCE(excluded.app_category, app_metadata.app_category),
+         last_checked_at = CURRENT_TIMESTAMP,
+         updated_at = CURRENT_TIMESTAMP`,
+    ).bind(appStoreId, value?.iconUrl ?? null, value?.category ?? null);
   }));
 }
 
 async function storeReviews(
   db: D1Database,
-  reviews: StoredReview[],
+  reviews: ParsedReviewEmail[],
   forwardedFrom: string | null,
 ): Promise<{ submissions: number }> {
   const statements: D1PreparedStatement[] = [];
@@ -364,8 +404,8 @@ async function storeReviews(
            submission_id, app_name, platform, organization_id, app_store_id, app_version,
            status, submitted_at, issue_at, successful_at, latest_event_at, submitted_via,
            guideline_code, guideline_title, rejection_reason, issue_description, next_steps,
-           forwarded_from, app_icon_url, app_category, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+           forwarded_from, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
          ON CONFLICT(submission_id) DO UPDATE SET
            app_name = excluded.app_name,
            platform = excluded.platform,
@@ -390,8 +430,6 @@ async function storeReviews(
            issue_description = COALESCE(reviews.issue_description, excluded.issue_description),
            next_steps = COALESCE(reviews.next_steps, excluded.next_steps),
            forwarded_from = COALESCE(reviews.forwarded_from, excluded.forwarded_from),
-           app_icon_url = COALESCE(excluded.app_icon_url, reviews.app_icon_url),
-           app_category = COALESCE(excluded.app_category, reviews.app_category),
            updated_at = CURRENT_TIMESTAMP`,
       )
       .bind(
@@ -413,8 +451,6 @@ async function storeReviews(
         review.issueDescription,
         review.nextSteps,
         forwardedFrom,
-        review.appIconUrl,
-        review.appCategory,
       ),
     );
   }

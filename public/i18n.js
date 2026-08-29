@@ -4,8 +4,8 @@
 
   const messages = {
     en: {
-      "meta.title": "Review.vg — App review, compared",
-      "meta.description": "Community-shared App Store review outcomes and review timelines.",
+      "meta.title": "App Store Review Times & Outcomes — Review.vg",
+      "meta.description": "Compare real App Store review times, approvals, rejections, guidelines, and app-version histories shared by iOS, macOS, tvOS, and visionOS developers.",
       "nav.homeAria": "Review.vg home",
       "nav.how": "How it works",
       "nav.language": "Language",
@@ -127,8 +127,8 @@
       "category.Uncategorized": "Uncategorized",
     },
     "zh-CN": {
-      "meta.title": "Review.vg — App 审核，对比呈现",
-      "meta.description": "由开发者共同分享的 App Store 审核结果与时间线。",
+      "meta.title": "App Store 审核时间与结果 — Review.vg",
+      "meta.description": "比较开发者共享的真实 App Store 审核时长、通过、驳回、指南和版本历史，涵盖 iOS、macOS、tvOS 与 visionOS。",
       "nav.homeAria": "Review.vg 首页",
       "nav.how": "使用方法",
       "nav.language": "语言",
@@ -250,8 +250,8 @@
       "category.Uncategorized": "未分类",
     },
     es: {
-      "meta.title": "Review.vg — Revisión de apps, comparada",
-      "meta.description": "Resultados y cronologías de revisión del App Store compartidos por la comunidad.",
+      "meta.title": "Tiempos y resultados de revisión del App Store — Review.vg",
+      "meta.description": "Compara tiempos reales de revisión del App Store, aprobaciones, rechazos, directrices e historiales de versiones compartidos por desarrolladores de iOS, macOS, tvOS y visionOS.",
       "nav.homeAria": "Inicio de Review.vg",
       "nav.how": "Cómo funciona",
       "nav.language": "Idioma",
@@ -373,8 +373,8 @@
       "category.Uncategorized": "Sin categoría",
     },
     ja: {
-      "meta.title": "Review.vg — App審査を比較",
-      "meta.description": "開発者コミュニティが共有するApp Store審査結果とタイムライン。",
+      "meta.title": "App Store審査時間と結果 — Review.vg",
+      "meta.description": "開発者が共有した実際のApp Store審査時間、承認、却下、ガイドライン、バージョン履歴をiOS、macOS、tvOS、visionOS別に比較できます。",
       "nav.homeAria": "Review.vg ホーム",
       "nav.how": "使い方",
       "nav.language": "言語",

@@ -68,6 +68,7 @@ describe("public timeline", () => {
     const response = await getTimeline(fixture.env);
     const body = await response.json() as { events: Array<Record<string, unknown>> };
 
+    expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
     expect(body.events[0]).toMatchObject({
       appName: "Private pre-release name",
       hasApproved: false,
@@ -110,6 +111,8 @@ describe("public timeline", () => {
     expect(fixture.query()).toContain("julianday('now', '-60 days')");
     expect(fixture.query()).toContain("SELECT r.submission_id, r.app_name");
     expect(fixture.query()).toContain("eligible.has_approved");
+    expect(fixture.query()).toContain("LEFT JOIN app_metadata AS metadata");
+    expect(fixture.query()).not.toContain("r.app_icon_url");
   });
 
   it("reveals the already-loaded app name without a second API request", async () => {
