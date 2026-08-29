@@ -208,6 +208,10 @@ code { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, mono
 .privacy p { max-width: 800px; margin: 0; color: rgba(255, 255, 255, .67); font-size: 14px; line-height: 1.55; }
 .site-footer { min-height: 125px; display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 40px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
 .footer-brand { color: var(--ink); }
+.footer-meta { display: flex; align-items: center; gap: 22px; }
+.footer-meta p { margin: 0; }
+.footer-contact { color: var(--ink); font-weight: 700; text-decoration: none; }
+.footer-contact:hover, .footer-contact:focus-visible { color: var(--green); text-decoration: underline; text-underline-offset: 3px; }
 
 @media (max-width: 900px) {
   .hero { grid-template-columns: 1fr; gap: 35px; padding-top: 54px; }
@@ -305,10 +309,10 @@ code { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, mono
   .timeline-controls { justify-content: center; }
   .timeline-filter-bar { grid-template-columns: 1fr; gap: 10px; padding-inline: 14px; }
   .timeline-filter-clear { width: 100%; }
-  .timeline-board-body { --icon-column: 50px; --name-column: 100px; --app-column: 150px; --platform-column: 58px; max-height: min(62vh, 480px); }
-  .timeline-app-group, .timeline-axis-row { min-width: 680px; }
-  .timeline-name h3 { font-size: 11px; }
-  .timeline-app-category { max-width: 78px; }
+  .timeline-board-body { --icon-column: 50px; max-height: min(62vh, 480px); }
+  .timeline-app-group, .timeline-axis-row { min-width: 520px; grid-template-columns: var(--icon-column) minmax(420px, 1fr); }
+  .timeline-name, .timeline-platform-label, .timeline-axis-spacer { display: none; }
+  .timeline-lane, .timeline-shared-axis { grid-column: 2; }
   .timeline-interaction-hint { text-align: center; }
   .how { padding-block: 80px; }
   .auto-forward { gap: 34px; padding-bottom: 80px; }
@@ -316,6 +320,7 @@ code { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, mono
   .gmail-auto-confirm { padding: 20px; }
   .privacy { grid-template-columns: 1fr; padding: 30px; }
   .site-footer { grid-template-columns: 1fr; gap: 10px; padding: 30px 0; }
+  .footer-meta { flex-wrap: wrap; gap: 10px 20px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
