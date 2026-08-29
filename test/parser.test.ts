@@ -113,6 +113,18 @@ describe("parseReviewEmail", () => {
     expect(result?.submissionId).toBe("11111111-2222-3333-4444-555555555555");
   });
 
+  it.each(["tvOS", "visionOS"])("preserves %s as its own review platform", (platform) => {
+    const result = parseReviewEmail({
+      ...base,
+      subject: `Review of your Living Room (${platform}) submission is complete.`,
+      text: "Submission ID: 11111111-2222-3333-4444-555555555555",
+      html: `<h3>App Version</h3><p>2.4 for ${platform}</p>
+        <a href="https://appstoreconnect.apple.com/olympus/v1/session/switchTo/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee?targetUrl=/apps/1234567890/appstore/reviewsubmissions/details/11111111-2222-3333-4444-555555555555">View</a>`,
+    });
+
+    expect(result).toMatchObject({ platform, appVersion: "2.4" });
+  });
+
   it("rejects unrelated email", () => {
     expect(parseReviewEmail({ ...base, subject: "Your invoice", text: "Hello" })).toBeNull();
   });

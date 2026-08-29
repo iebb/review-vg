@@ -64,6 +64,10 @@ function groupApps(events) {
     const key = appStoreId ? `id:${appStoreId}` : `submission:${event.submissionId}`;
     const app = groups.get(key) || {
       approvedName: null,
+      revealedName: null,
+      nameRevealState: "idle",
+      nameRevealPromise: null,
+      nameRevealListeners: new Set(),
       appStoreId,
       appIconUrl: null,
       appCategory: null,
@@ -158,7 +162,10 @@ function createSharedTimeline(apps) {
   const appRows = [];
   for (const app of apps) {
     const group = element("section", "timeline-app-group");
-    group.setAttribute("aria-label", t("timeline.appAria", { app: app.appName }));
+    const updateGroupLabel = () => {
+      group.setAttribute("aria-label", t("timeline.appAria", { app: displayedAppName(app) }));
+    };
+    subscribeAppName(app, updateGroupLabel);
     const identity = createAppIdentity(app);
     identity.style.gridRow = `1 / span ${app.platforms.length}`;
     for (const cell of identity.children) {
@@ -182,9 +189,15 @@ function createSharedTimeline(apps) {
       svg.classList.add("timeline-lane");
       svg.style.gridRow = String(row);
       svg.setAttribute("role", "group");
-      svg.setAttribute("aria-label", t("timeline.laneAria", { app: app.appName, platform: platform.platform }));
+      const updateLaneLabel = () => {
+        svg.setAttribute("aria-label", t("timeline.laneAria", {
+          app: displayedAppName(app),
+          platform: platform.platform,
+        }));
+      };
+      subscribeAppName(app, updateLaneLabel);
       group.append(platformLabel, svg);
-      lanes.push({ svg, appName: app.appName, platform: platform.platform, events: platform.events });
+      lanes.push({ svg, app, platform: platform.platform, events: platform.events });
     });
     body.append(group);
     appRows.push({ app, group });
@@ -244,12 +257,15 @@ function createSharedTimeline(apps) {
   categorySelect.addEventListener("change", applyFilters);
   applyFilters();
 
-  new SharedTimelineChart(axis, lanes, tooltip, {
+  const chart = new SharedTimelineChart(axis, lanes, tooltip, {
     zoomIn,
     zoomOut,
     reset,
     rangeLabel,
   });
+  for (const app of new Set(lanes.map((lane) => lane.app))) {
+    subscribeAppName(app, () => chart.render(), false);
+  }
   return experience;
 }
 
@@ -324,16 +340,21 @@ function createLeaderboardEntry(entry, rank) {
   const icon = element("span", "review-leaderboard-icon");
   icon.append(createAppIcon(entry.app));
   const copy = element("span", "review-leaderboard-copy");
-  const name = element("strong");
-  name.textContent = entry.app.appName;
+  const name = createAppNameLabel(entry.app, "review-leaderboard-name");
   const details = element("span", "review-leaderboard-meta");
   details.textContent = [entry.event.platform, entry.event.appVersion].filter(Boolean).join(" · ");
   copy.append(name, details);
   const guideline = publicGuideline(entry.event);
-  if (entry.event.status === "issue" && guideline) {
+  if (entry.event.status === "issue") {
     const guidelineNode = element("span", "review-leaderboard-guideline");
-    guidelineNode.textContent = guideline;
+    guidelineNode.textContent = guideline || "\u00a0";
     copy.append(guidelineNode);
+  } else {
+    const acceptedDate = element("span", "review-leaderboard-accepted-date");
+    acceptedDate.textContent = t("leaderboard.acceptedDate", {
+      date: shortDate(entry.event.occurredAt),
+    });
+    copy.append(acceptedDate);
   }
   const duration = element("strong", "review-leaderboard-duration");
   duration.textContent = formatReviewDuration(entry.duration);
@@ -347,7 +368,7 @@ function createAppIdentity(app) {
   iconCell.append(createAppIcon(app));
   const nameBlock = element("div", "timeline-name");
   const title = element("h3");
-  title.textContent = app.appName;
+  title.append(createAppNameLabel(app, "timeline-app-name"));
   const meta = element("div", "timeline-app-meta");
   const category = element("span", "timeline-app-category");
   category.textContent = localizedCategory(app.appCategory);
@@ -360,14 +381,35 @@ function createAppIdentity(app) {
 
 function createAppIcon(group) {
   const fallback = element("span", "app-icon app-icon-fallback");
-  fallback.textContent = group.isApproved ? (group.appName.slice(0, 1).toUpperCase() || "A") : "#";
+  fallback.textContent = group.isApproved ? (displayedAppName(group).slice(0, 1).toUpperCase() || "A") : "#";
   fallback.setAttribute("aria-hidden", "true");
+  if (!group.appIconUrl && canRevealAppName(group)) {
+    const control = element("span", "app-name-reveal-control");
+    const button = element("button", "app-icon app-icon-fallback app-name-reveal-icon");
+    button.type = "button";
+    button.textContent = "#";
+    const popover = element("span", "app-name-reveal-popover");
+    popover.hidden = true;
+    const update = () => {
+      const revealed = Boolean(group.revealedName);
+      button.disabled = group.nameRevealState === "loading" || revealed;
+      button.setAttribute("aria-label", revealed
+        ? t("timeline.revealedNameAria", { app: displayedAppName(group) })
+        : t("timeline.revealNameAria"));
+      popover.textContent = revealed ? displayedAppName(group) : "";
+      popover.hidden = !revealed;
+    };
+    subscribeAppName(group, update);
+    button.addEventListener("click", () => revealAppName(group));
+    control.append(button, popover);
+    return control;
+  }
   if (!group.appIconUrl) return fallback;
 
   const image = document.createElement("img");
   image.className = "app-icon";
   image.src = group.appIconUrl;
-  image.alt = t("timeline.iconAlt", { app: group.appName });
+  image.alt = t("timeline.iconAlt", { app: displayedAppName(group) });
   image.loading = "lazy";
   image.referrerPolicy = "no-referrer";
   image.addEventListener("error", () => image.replaceWith(fallback), { once: true });
@@ -378,7 +420,7 @@ function createAppIcon(group) {
   link.href = storeUrl;
   link.target = "_blank";
   link.rel = "noopener noreferrer";
-  link.setAttribute("aria-label", t("timeline.openInStore", { app: group.appName }));
+  link.setAttribute("aria-label", t("timeline.openInStore", { app: displayedAppName(group) }));
   link.append(image);
   return link;
 }
@@ -388,7 +430,7 @@ class SharedTimelineChart {
     this.axis = axis;
     this.lanes = lanes.map((lane) => {
       const points = lane.events
-        .map((event) => timelinePoint(event, lane.appName))
+        .map((event) => timelinePoint(event, lane.app))
         .filter((point) => Number.isFinite(point.startTime) && Number.isFinite(point.endTime))
         .sort((left, right) => (
           (right.endTime - right.startTime) - (left.endTime - left.startTime) ||
@@ -595,7 +637,7 @@ class SharedTimelineChart {
         ? t("timeline.versionPhrase", { version: point.event.appVersion })
         : "";
       const label = t("timeline.eventAria", {
-        app: lane.appName,
+        app: displayedAppName(lane.app),
         platform: lane.platform,
         outcome,
         version,
@@ -669,7 +711,7 @@ class SharedTimelineChart {
   showTooltip(point, clientX, clientY) {
     const accepted = point.event.status === "success";
     const heading = element("strong", "timeline-tooltip-title");
-    heading.textContent = `${point.appName} · ${point.event.platform}`;
+    heading.textContent = `${displayedAppName(point.app)} · ${point.event.platform}`;
     const timing = element("span", "timeline-tooltip-timing");
     const timingLines = [
       accepted ? t("timeline.accepted") : t("timeline.rejected"),
@@ -710,13 +752,13 @@ class SharedTimelineChart {
   }
 }
 
-function timelinePoint(event, appName) {
+function timelinePoint(event, app) {
   const endTime = Date.parse(event?.occurredAt);
   const submittedTime = Date.parse(event?.submittedAt);
   const startTime = Number.isFinite(submittedTime) && submittedTime <= endTime
     ? submittedTime
     : endTime;
-  return { event, appName, startTime, endTime };
+  return { event, app, startTime, endTime };
 }
 
 function reviewDuration(event) {
@@ -839,6 +881,16 @@ function dateTime(value) {
   }).format(new Date(timestamp));
 }
 
+function shortDate(value) {
+  const timestamp = typeof value === "number" ? value : Date.parse(value);
+  if (!Number.isFinite(timestamp)) return t("time.unknownDate");
+  return new Intl.DateTimeFormat(I18N.locale, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(timestamp));
+}
+
 function compareEvents(left, right) {
   return eventTime(left) - eventTime(right) || String(left.submissionId).localeCompare(String(right.submissionId));
 }
@@ -880,7 +932,82 @@ function platformRank(platform) {
   const normalized = String(platform || "").toLocaleLowerCase();
   if (normalized === "ios") return 0;
   if (normalized === "macos") return 1;
-  return 2;
+  if (normalized === "tvos") return 2;
+  if (normalized === "visionos") return 3;
+  return 4;
+}
+
+function canRevealAppName(app) {
+  return !app.isApproved && Boolean(app.appStoreId);
+}
+
+function displayedAppName(app) {
+  return app.revealedName || app.appName;
+}
+
+function subscribeAppName(app, listener, callImmediately = true) {
+  app.nameRevealListeners ||= new Set();
+  app.nameRevealListeners.add(listener);
+  if (callImmediately) listener();
+}
+
+function notifyAppName(app) {
+  for (const listener of app.nameRevealListeners || []) listener();
+}
+
+function createAppNameLabel(app, className) {
+  if (!canRevealAppName(app)) {
+    const label = element("span", className);
+    label.textContent = displayedAppName(app);
+    return label;
+  }
+
+  const button = element("button", `${className} app-name-reveal-label`);
+  button.type = "button";
+  const update = () => {
+    const revealed = Boolean(app.revealedName);
+    button.textContent = app.nameRevealState === "loading"
+      ? t("timeline.revealingName")
+      : app.nameRevealState === "error"
+        ? t("timeline.revealRetry")
+        : displayedAppName(app);
+    button.disabled = app.nameRevealState === "loading" || revealed;
+    button.setAttribute("aria-label", revealed
+      ? t("timeline.revealedNameAria", { app: displayedAppName(app) })
+      : t("timeline.revealNameAria"));
+  };
+  subscribeAppName(app, update);
+  button.addEventListener("click", () => revealAppName(app));
+  return button;
+}
+
+async function revealAppName(app) {
+  if (!canRevealAppName(app) || app.revealedName) return;
+  if (app.nameRevealPromise) return app.nameRevealPromise;
+  app.nameRevealState = "loading";
+  notifyAppName(app);
+  app.nameRevealPromise = fetch(`/api/apps/${encodeURIComponent(app.appStoreId)}/name`, {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  })
+    .then(async (response) => {
+      if (!response.ok) throw new Error(`App name request failed: ${response.status}`);
+      const payload = await response.json();
+      const appName = normalizedPublicName(payload.appName);
+      if (!appName) throw new Error("App name response was empty");
+      app.revealedName = appName;
+      app.nameRevealState = "revealed";
+      notifyAppName(app);
+    })
+    .catch((error) => {
+      app.nameRevealState = "error";
+      notifyAppName(app);
+      console.error(error);
+    })
+    .finally(() => {
+      app.nameRevealPromise = null;
+    });
+  return app.nameRevealPromise;
 }
 
 function appStoreUrl(appStoreId) {

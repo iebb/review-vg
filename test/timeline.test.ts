@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { forwardedFromAddress, getTimeline, isReviewRecipient } from "../src/index";
+import {
+  forwardedFromAddress,
+  getRevealableAppName,
+  getTimeline,
+  isReviewRecipient,
+} from "../src/index";
 
 interface FakeTimelineRow {
   submission_id: string;
@@ -35,6 +40,28 @@ function fakeEnvironment(rows: FakeTimelineRow[]) {
     },
   } as unknown as Pick<Env, "DB">;
   return { env, query: () => query };
+}
+
+function fakeRevealEnvironment(appName: string | null) {
+  let query = "";
+  let bindings: unknown[] = [];
+  const env = {
+    DB: {
+      prepare(sql: string) {
+        query = sql;
+        return {
+          bind(...values: unknown[]) {
+            bindings = values;
+            return this;
+          },
+          async first() {
+            return appName === null ? null : { app_name: appName };
+          },
+        };
+      },
+    },
+  } as unknown as Pick<Env, "DB">;
+  return { env, query: () => query, bindings: () => bindings };
 }
 
 describe("public timeline", () => {
@@ -103,5 +130,27 @@ describe("public timeline", () => {
     expect(fixture.query()).toContain("julianday('now', '-60 days')");
     expect(fixture.query()).toContain("WHEN eligible.has_approved = 1");
     expect(fixture.query()).toContain("approved.status = 'success'");
+  });
+
+  it("reveals a recent never-approved app name only through the explicit endpoint", async () => {
+    const fixture = fakeRevealEnvironment("  Private   Beta  ");
+
+    const response = await getRevealableAppName(fixture.env, "1234567890");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(await response.json()).toEqual({ appName: "Private Beta" });
+    expect(fixture.bindings()).toEqual(["1234567890"]);
+    expect(fixture.query()).toContain("approved.status = 'success'");
+    expect(fixture.query()).toContain("julianday('now', '-60 days')");
+  });
+
+  it("rejects invalid App Store IDs before querying D1", async () => {
+    const fixture = fakeRevealEnvironment("Should not be read");
+
+    const response = await getRevealableAppName(fixture.env, "not-an-id");
+
+    expect(response.status).toBe(400);
+    expect(fixture.query()).toBe("");
   });
 });
