@@ -15,7 +15,8 @@ INSERT OR IGNORE INTO reviews (
   guideline_title,
   rejection_reason,
   issue_description,
-  next_steps
+  next_steps,
+  app_category
 ) VALUES
 (
   '75deca1f-788c-4807-835b-2dbafca0740c',
@@ -34,7 +35,8 @@ INSERT OR IGNORE INTO reviews (
   'Design - Spam',
   replace('Guideline 4.3(a) - Design - Spam\n\nIssue Description\nWe noticed the app shares a similar binary, metadata, and/or concept as apps submitted to the App Store by you or other developers, with only minor differences.\nSubmitting similar or repackaged apps is a form of spam that creates clutter and makes it difficult for users to discover new apps.', '\n', char(10)),
   replace('We noticed the app shares a similar binary, metadata, and/or concept as apps submitted to the App Store by you or other developers, with only minor differences.\nSubmitting similar or repackaged apps is a form of spam that creates clutter and makes it difficult for users to discover new apps.', '\n', char(10)),
-  'Since we do not accept spam apps on the App Store, we encourage you to review the app concept and submit a unique app with distinct content and functionality.'
+  'Since we do not accept spam apps on the App Store, we encourage you to review the app concept and submit a unique app with distinct content and functionality.',
+  NULL
 ),
 (
   '6c88cc8c-96e0-495d-9a36-f88613be69a6',
@@ -53,7 +55,8 @@ INSERT OR IGNORE INTO reviews (
   NULL,
   NULL,
   NULL,
-  NULL
+  NULL,
+  'Social Networking'
 ),
 (
   '22222222-3333-4444-5555-666666666666',
@@ -72,5 +75,6 @@ INSERT OR IGNORE INTO reviews (
   NULL,
   NULL,
   NULL,
-  NULL
+  NULL,
+  'Social Networking'
 );

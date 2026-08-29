@@ -51,11 +51,15 @@ function renderTimelines(events) {
 function groupApps(events) {
   const groups = new Map();
   for (const event of events) {
-    const key = String(event.appStoreId || normalizeAppName(event.appName));
+    const appStoreId = normalizedAppStoreId(event.appStoreId);
+    const approvedName = normalizedPublicName(event.appName);
+    const category = normalizedPublicCategory(event.appCategory);
+    const key = appStoreId ? `id:${appStoreId}` : `submission:${event.submissionId}`;
     const app = groups.get(key) || {
-      appName: event.appName,
-      appStoreId: event.appStoreId,
+      approvedName: null,
+      appStoreId,
       appIconUrl: null,
+      appCategory: null,
       latestEventAt: 0,
       events: [],
       platforms: new Map(),
@@ -63,10 +67,11 @@ function groupApps(events) {
     const timestamp = eventTime(event);
     if (timestamp >= app.latestEventAt) {
       app.latestEventAt = timestamp;
-      app.appName = event.appName;
-      app.appStoreId = event.appStoreId || app.appStoreId;
+      app.appStoreId = appStoreId || app.appStoreId;
     }
+    if (approvedName) app.approvedName = approvedName;
     if (event.appIconUrl) app.appIconUrl = event.appIconUrl;
+    if (category) app.appCategory = category;
     app.events.push(event);
     const platform = app.platforms.get(event.platform) || { platform: event.platform, events: [] };
     platform.events.push(event);
@@ -77,6 +82,9 @@ function groupApps(events) {
   return [...groups.values()]
     .map((app) => ({
       ...app,
+      appName: app.approvedName || (app.appStoreId ? `App ID ${app.appStoreId}` : "Unapproved app"),
+      appCategory: app.appCategory || "Uncategorized",
+      isApproved: Boolean(app.approvedName),
       events: app.events.sort(compareEvents),
       platforms: [...app.platforms.values()]
         .map((platform) => ({ ...platform, events: platform.events.sort(compareEvents) }))
@@ -109,8 +117,48 @@ function createSharedTimeline(apps) {
   controls.append(zoomOut, rangeLabel, zoomIn, reset);
   toolbar.append(summary, controls);
 
+  const filterBar = element("div", "timeline-filter-bar");
+  const categoryField = element("label", "timeline-filter-field");
+  const categoryLabel = element("span");
+  categoryLabel.textContent = "Category";
+  const categorySelect = element("select", "timeline-filter-input timeline-filter-select");
+  categorySelect.setAttribute("aria-label", "Filter by app category");
+  const allCategories = document.createElement("option");
+  allCategories.value = "";
+  allCategories.textContent = "All categories";
+  categorySelect.append(allCategories);
+  const categories = [...new Set(apps.map((app) => app.appCategory))]
+    .sort((left, right) => left.localeCompare(right));
+  for (const category of categories) {
+    const option = document.createElement("option");
+    option.value = category;
+    option.textContent = category;
+    categorySelect.append(option);
+  }
+  categoryField.append(categoryLabel, categorySelect);
+
+  const appIdField = element("label", "timeline-filter-field");
+  const appIdLabel = element("span");
+  appIdLabel.textContent = "App ID";
+  const appIdInput = element("input", "timeline-filter-input");
+  appIdInput.type = "search";
+  appIdInput.inputMode = "numeric";
+  appIdInput.autocomplete = "off";
+  appIdInput.placeholder = "e.g. 6783830742";
+  appIdInput.setAttribute("aria-label", "Filter by App Store app ID");
+  appIdField.append(appIdLabel, appIdInput);
+
+  const clearFilters = element("button", "timeline-filter-clear");
+  clearFilters.type = "button";
+  clearFilters.textContent = "Clear";
+  clearFilters.disabled = true;
+  const filterStatus = element("span", "timeline-filter-status");
+  filterStatus.setAttribute("aria-live", "polite");
+  filterBar.append(categoryField, appIdField, clearFilters, filterStatus);
+
   const body = element("div", "timeline-board-body");
   const lanes = [];
+  const appRows = [];
   for (const app of apps) {
     const group = element("section", "timeline-app-group");
     group.setAttribute("aria-label", `${app.appName} review timeline`);
@@ -133,6 +181,7 @@ function createSharedTimeline(apps) {
       lanes.push({ svg, appName: app.appName, platform: platform.platform, events: platform.events });
     });
     body.append(group);
+    appRows.push({ app, group });
   }
 
   const axisRow = element("div", "timeline-axis-row");
@@ -154,7 +203,47 @@ function createSharedTimeline(apps) {
   const tooltip = element("div", "timeline-tooltip");
   tooltip.setAttribute("role", "tooltip");
   tooltip.setAttribute("aria-hidden", "true");
-  board.append(toolbar, body, footer, tooltip);
+  const noMatches = emptyState(
+    "No matching apps",
+    "Try another category or App Store ID.",
+  );
+  noMatches.classList.add("timeline-filter-empty");
+  noMatches.hidden = true;
+  board.append(toolbar, filterBar, noMatches, body, footer, tooltip);
+
+  const applyFilters = () => {
+    const selectedCategory = categorySelect.value;
+    const appIdQuery = appIdInput.value.replace(/\D/g, "");
+    if (appIdInput.value !== appIdQuery) appIdInput.value = appIdQuery;
+    const hasFilters = Boolean(selectedCategory || appIdQuery);
+    let visibleApps = 0;
+    let visibleSubmissions = 0;
+    for (const row of appRows) {
+      const visible = (!selectedCategory || row.app.appCategory === selectedCategory) &&
+        (!appIdQuery || String(row.app.appStoreId || "").includes(appIdQuery));
+      row.group.hidden = !visible;
+      if (visible) {
+        visibleApps += 1;
+        visibleSubmissions += row.app.events.length;
+      }
+    }
+    summaryTitle.textContent = hasFilters ? "Filtered apps" : "All apps";
+    summaryCopy.textContent = `${number(visibleApps)} ${visibleApps === 1 ? "app" : "apps"} · ${number(visibleSubmissions)} ${visibleSubmissions === 1 ? "submission" : "submissions"}`;
+    filterStatus.textContent = hasFilters ? `${number(visibleApps)} shown` : "";
+    clearFilters.disabled = !hasFilters;
+    noMatches.hidden = visibleApps !== 0;
+    body.hidden = visibleApps === 0;
+    footer.hidden = visibleApps === 0;
+  };
+  categorySelect.addEventListener("change", applyFilters);
+  appIdInput.addEventListener("input", applyFilters);
+  clearFilters.addEventListener("click", () => {
+    categorySelect.value = "";
+    appIdInput.value = "";
+    applyFilters();
+    categorySelect.focus();
+  });
+  applyFilters();
 
   new SharedTimelineChart(axis, lanes, tooltip, {
     zoomIn,
@@ -171,8 +260,15 @@ function createAppIdentity(app) {
   const nameBlock = element("div", "timeline-name");
   const title = element("h3");
   title.textContent = app.appName;
-  const meta = element("span", "timeline-app-count");
-  meta.textContent = `${number(app.events.length)} ${app.events.length === 1 ? "submission" : "submissions"}`;
+  const meta = element("div", "timeline-app-meta");
+  const category = element("span", "timeline-app-category");
+  category.textContent = app.appCategory;
+  category.title = app.appCategory;
+  const details = element("span", "timeline-app-details");
+  const id = app.appStoreId ? `ID ${app.appStoreId} · ` : "";
+  details.textContent = `${id}${number(app.events.length)} ${app.events.length === 1 ? "submission" : "submissions"}`;
+  details.title = details.textContent;
+  meta.append(category, details);
   nameBlock.append(title, meta);
   identity.append(nameBlock);
   return identity;
@@ -180,7 +276,7 @@ function createAppIdentity(app) {
 
 function createAppIcon(group) {
   const fallback = element("span", "app-icon app-icon-fallback");
-  fallback.textContent = group.appName.slice(0, 1).toUpperCase() || "A";
+  fallback.textContent = group.isApproved ? (group.appName.slice(0, 1).toUpperCase() || "A") : "#";
   fallback.setAttribute("aria-hidden", "true");
   if (!group.appIconUrl) return fallback;
 
@@ -208,7 +304,7 @@ class SharedTimelineChart {
     this.axis = axis;
     this.lanes = lanes.map((lane) => {
       const points = lane.events
-        .map((event) => timelinePoint(event))
+        .map((event) => timelinePoint(event, lane.appName))
         .filter((point) => Number.isFinite(point.startTime) && Number.isFinite(point.endTime))
         .sort((left, right) => (
           (right.endTime - right.startTime) - (left.endTime - left.startTime) ||
@@ -479,7 +575,7 @@ class SharedTimelineChart {
   showTooltip(point, clientX, clientY) {
     const accepted = point.event.status === "success";
     const heading = element("strong", "timeline-tooltip-title");
-    heading.textContent = `${point.event.appName} · ${point.event.platform}`;
+    heading.textContent = `${point.appName} · ${point.event.platform}`;
     const timing = element("span", "timeline-tooltip-timing");
     timing.textContent = `${accepted ? "Accepted" : "Failed"}${point.event.appVersion ? ` · Version ${point.event.appVersion}` : ""}\nSubmitted ${dateTime(point.startTime)}\nApple replied ${dateTime(point.endTime)}`;
     const content = [heading, timing];
@@ -514,13 +610,13 @@ class SharedTimelineChart {
   }
 }
 
-function timelinePoint(event) {
+function timelinePoint(event, appName) {
   const endTime = Date.parse(event?.occurredAt);
   const submittedTime = Date.parse(event?.submittedAt);
   const startTime = Number.isFinite(submittedTime) && submittedTime <= endTime
     ? submittedTime
     : endTime;
-  return { event, startTime, endTime };
+  return { event, appName, startTime, endTime };
 }
 
 function assignPointTracks(points) {
@@ -638,8 +734,17 @@ function publicRejectionReason(value) {
   return value.replace(/(?:^|\n)\s*Next Steps\b[\s\S]*$/i, "").trim();
 }
 
-function normalizeAppName(value) {
-  return String(value || "").trim().toLocaleLowerCase();
+function normalizedPublicName(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizedPublicCategory(value) {
+  return typeof value === "string" && value.trim() ? value.replace(/\s+/g, " ").trim() : null;
+}
+
+function normalizedAppStoreId(value) {
+  const id = String(value || "");
+  return /^\d{6,20}$/.test(id) ? id : null;
 }
 
 function platformRank(platform) {

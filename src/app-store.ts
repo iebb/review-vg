@@ -5,10 +5,15 @@ const LOOKUP_TIMEOUT_MS = 5_000;
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-export async function fetchAppStoreIcons(
+export interface AppStoreMetadata {
+  iconUrl: string | null;
+  category: string | null;
+}
+
+export async function fetchAppStoreMetadata(
   appStoreIds: string[],
   fetcher: Fetcher = fetch,
-): Promise<Map<string, string>> {
+): Promise<Map<string, AppStoreMetadata>> {
   const ids = [...new Set(appStoreIds)].filter(isAppStoreId).slice(0, MAX_LOOKUP_IDS);
   if (ids.length === 0) return new Map();
 
@@ -30,7 +35,7 @@ export async function fetchAppStoreIcons(
   }
 
   const requested = new Set(ids);
-  const icons = new Map<string, string>();
+  const metadata = new Map<string, AppStoreMetadata>();
   for (const result of parsed.results) {
     if (!isRecord(result)) continue;
     const id = typeof result.trackId === "number" || typeof result.trackId === "string"
@@ -41,9 +46,26 @@ export async function fetchAppStoreIcons(
 
     const candidates = [result.artworkUrl512, result.artworkUrl100, result.artworkUrl60];
     const icon = candidates.find((candidate): candidate is string => isTrustedArtworkUrl(candidate));
-    if (icon) icons.set(id, icon);
+    const category = normalizedCategory(result.primaryGenreName);
+    if (icon || category) {
+      metadata.set(id, { iconUrl: icon ?? null, category });
+    }
   }
-  return icons;
+  return metadata;
+}
+
+export async function fetchAppStoreIcons(
+  appStoreIds: string[],
+  fetcher: Fetcher = fetch,
+): Promise<Map<string, string>> {
+  const metadata = await fetchAppStoreMetadata(appStoreIds, fetcher);
+  return new Map(
+    [...metadata]
+      .filter((entry): entry is [string, AppStoreMetadata & { iconUrl: string }] => (
+        entry[1].iconUrl !== null
+      ))
+      .map(([appStoreId, value]) => [appStoreId, value.iconUrl]),
+  );
 }
 
 function isAppStoreId(value: string): boolean {
@@ -59,6 +81,12 @@ function isTrustedArtworkUrl(value: unknown): value is string {
   } catch {
     return false;
   }
+}
+
+function normalizedCategory(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const category = value.replace(/\s+/g, " ").trim();
+  return category.length > 0 && category.length <= 100 ? category : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
