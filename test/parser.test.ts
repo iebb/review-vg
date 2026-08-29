@@ -79,10 +79,11 @@ describe("parseReviewEmail", () => {
       guidelineCode: "4.3(a)",
       guidelineTitle: "Design - Spam",
       rejectionReason:
-        "Guideline 4.3(a) - Design - Spam\n\nIssue Description\nWe noticed the app shares a similar binary, metadata, and/or concept.\n\nNext Steps\nReview the app concept and submit a unique app.",
+        "Guideline 4.3(a) - Design - Spam\n\nIssue Description\nWe noticed the app shares a similar binary, metadata, and/or concept.",
       issueDescription: "We noticed the app shares a similar binary, metadata, and/or concept.",
       nextSteps: "Review the app concept and submit a unique app.",
     });
+    expect(result?.rejectionReason).not.toContain("Next Steps");
   });
 
   it("stores an explicit fallback when Apple provides no detailed rejection reason", () => {

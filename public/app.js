@@ -110,18 +110,19 @@ function createTimelineRow(group) {
   const chartWrap = element("div", "timeline-chart-wrap");
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.classList.add("timeline-chart");
-  svg.setAttribute("role", "img");
+  svg.setAttribute("role", "group");
   svg.setAttribute("tabindex", "0");
-  svg.setAttribute("aria-label", `${group.appName} ${group.platform} review outcomes by date`);
+  svg.setAttribute("aria-label", `${group.appName} ${group.platform} review durations by date`);
+  const tooltip = element("div", "timeline-tooltip");
+  tooltip.setAttribute("role", "tooltip");
+  tooltip.setAttribute("aria-hidden", "true");
   const hint = element("p", "timeline-interaction-hint");
-  hint.textContent = "Scroll or pinch to zoom · drag to pan · use arrow keys to move";
-  chartWrap.append(svg, hint);
+  hint.textContent = "Hover or focus a bar for details · scroll or pinch to zoom · drag to pan";
+  chartWrap.append(svg, tooltip, hint);
 
   row.append(header, chartWrap);
-  const reasons = createRejectionReasons(group);
-  if (reasons) row.append(reasons);
 
-  new TimelineChart(svg, group.events, {
+  new TimelineChart(svg, tooltip, group.events, {
     zoomIn,
     zoomOut,
     reset,
@@ -155,37 +156,26 @@ function createAppIcon(group) {
   return link;
 }
 
-function createRejectionReasons(group) {
-  const failures = group.events.filter((event) => event.status === "issue" && event.rejectionReason);
-  if (failures.length === 0) return null;
-
-  const section = element("section", "rejection-reasons");
-  const heading = element("h4");
-  heading.textContent = failures.length === 1 ? "Rejection reason" : "Rejection reasons";
-  const list = element("div", "rejection-list");
-
-  for (const event of [...failures].reverse()) {
-    const item = element("article", "rejection-item");
-    const context = element("p", "rejection-context");
-    const version = event.appVersion ? `Version ${event.appVersion}` : "Version unavailable";
-    context.textContent = `${version} · ${dateTime(event.occurredAt)}`;
-    const reason = element("p", "rejection-copy");
-    reason.textContent = event.rejectionReason;
-    item.append(context, reason);
-    list.append(item);
-  }
-  section.append(heading, list);
-  return section;
-}
-
 class TimelineChart {
-  constructor(svg, events, controls) {
+  constructor(svg, tooltip, events, controls) {
     this.svg = svg;
+    this.tooltip = tooltip;
     this.controls = controls;
     this.points = events
-      .map((event) => ({ event, time: eventTime(event), slot: 0 }))
-      .filter((point) => Number.isFinite(point.time))
-      .sort((left, right) => left.time - right.time || left.event.submissionId.localeCompare(right.event.submissionId));
+      .map((event) => {
+        const endTime = Date.parse(event?.occurredAt);
+        const submittedTime = Date.parse(event?.submittedAt);
+        const startTime = Number.isFinite(submittedTime) && submittedTime <= endTime
+          ? submittedTime
+          : endTime;
+        return { event, startTime, endTime, slot: 0 };
+      })
+      .filter((point) => Number.isFinite(point.startTime) && Number.isFinite(point.endTime))
+      .sort((left, right) => (
+        left.startTime - right.startTime ||
+        left.endTime - right.endTime ||
+        left.event.submissionId.localeCompare(right.event.submissionId)
+      ));
     this.zoom = 1;
     this.maximumZoom = 256;
     this.viewStart = 0;
@@ -206,8 +196,12 @@ class TimelineChart {
   }
 
   setDomain() {
-    const minimum = this.points[0]?.time ?? Date.now();
-    const maximum = this.points.at(-1)?.time ?? minimum;
+    const minimum = this.points.length > 0
+      ? Math.min(...this.points.map((point) => point.startTime))
+      : Date.now();
+    const maximum = this.points.length > 0
+      ? Math.max(...this.points.map((point) => point.endTime))
+      : minimum;
     const observedSpan = maximum - minimum;
     if (observedSpan < 2 * DAY) {
       const middle = (minimum + maximum) / 2;
@@ -243,6 +237,8 @@ class TimelineChart {
 
     this.svg.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
+      if (event.target instanceof Element && event.target.closest(".timeline-event")) return;
+      this.hideTooltip();
       this.drag = { pointerX: event.clientX, viewStart: this.viewStart };
       this.svg.setPointerCapture(event.pointerId);
       this.svg.classList.add("is-dragging");
@@ -325,27 +321,28 @@ class TimelineChart {
   }
 
   assignSlots() {
-    const lastXBySlot = [];
-    const plotWidth = this.plotWidth();
+    const lastEndBySlot = [];
+    const minimumGap = (8 / this.plotWidth()) * this.domainSpan;
     for (const point of this.points) {
-      const x = this.marginLeft + ((point.time - this.domainStart) / this.domainSpan) * plotWidth;
-      let slot = lastXBySlot.findIndex((lastX) => x - lastX >= 20);
-      if (slot === -1) slot = lastXBySlot.length;
-      lastXBySlot[slot] = x;
+      let slot = lastEndBySlot.findIndex((lastEnd) => point.startTime - lastEnd >= minimumGap);
+      if (slot === -1) slot = lastEndBySlot.length;
+      lastEndBySlot[slot] = point.endTime;
       point.slot = slot;
     }
-    this.slotCount = Math.max(1, lastXBySlot.length);
+    this.slotCount = Math.max(1, lastEndBySlot.length);
   }
 
   render() {
+    this.hideTooltip();
     const measuredWidth = Math.floor(this.svg.clientWidth || this.svg.parentElement?.clientWidth || 700);
     this.width = Math.max(300, measuredWidth);
     this.marginLeft = this.width < 500 ? 22 : 34;
     this.marginRight = this.width < 500 ? 18 : 28;
     this.assignSlots();
 
-    const markerTop = 22;
-    const markerStep = 29;
+    const markerTop = 18;
+    const markerStep = 28;
+    const markerHeight = 20;
     const axisY = markerTop + this.slotCount * markerStep + 12;
     const height = axisY + 42;
     this.svg.setAttribute("viewBox", `0 0 ${this.width} ${height}`);
@@ -374,26 +371,46 @@ class TimelineChart {
     this.svg.append(axis);
 
     for (const point of this.points) {
-      if (point.time < this.viewStart || point.time > viewEnd) continue;
-      const x = this.x(point.time);
+      if (point.endTime < this.viewStart || point.startTime > viewEnd) continue;
+      const clippedStart = Math.max(point.startTime, this.viewStart);
+      const clippedEnd = Math.min(point.endTime, viewEnd);
+      const startX = this.x(clippedStart);
+      const endX = this.x(clippedEnd);
       const y = markerTop + point.slot * markerStep;
       const accepted = point.event.status === "success";
       const outcome = accepted ? "Accepted" : "Failed";
       const version = point.event.appVersion ? `, version ${point.event.appVersion}` : "";
-      const label = `${outcome}${version}, ${dateTime(point.event.occurredAt)}`;
+      const label = `${outcome}${version}. Submitted ${dateTime(point.startTime)}. Apple replied ${dateTime(point.endTime)}.`;
+      const reason = accepted ? "" : publicRejectionReason(point.event.rejectionReason);
+      const accessibleLabel = reason ? `${label} ${reason}` : label;
 
-      const stem = svgElement("line", "timeline-event-stem");
-      setAttributes(stem, { x1: x, x2: x, y1: y + 22, y2: axisY });
       const marker = svgElement("g", `timeline-event ${accepted ? "success" : "issue"}`);
       marker.setAttribute("tabindex", "0");
       marker.setAttribute("role", "img");
-      marker.setAttribute("aria-label", label);
-      const title = document.createElementNS(SVG_NS, "title");
-      title.textContent = label;
+      marker.setAttribute("aria-label", accessibleLabel);
       const block = svgElement("rect", "timeline-event-block");
-      setAttributes(block, { x: x - 8, y, width: 16, height: 22, rx: 7, ry: 7 });
-      marker.append(title, block);
-      this.svg.append(stem, marker);
+      const width = Math.max(2, endX - startX);
+      const rightEdge = this.width - this.marginRight;
+      const blockX = Math.min(startX, rightEdge - width);
+      setAttributes(block, { x: blockX, y, width, height: markerHeight, rx: 7, ry: 7 });
+      marker.append(block);
+      marker.addEventListener("pointerenter", (event) => this.showTooltip(point, event.clientX, event.clientY));
+      marker.addEventListener("pointermove", (event) => this.positionTooltip(event.clientX, event.clientY));
+      marker.addEventListener("pointerleave", () => this.hideTooltip());
+      marker.addEventListener("focus", () => {
+        const bounds = block.getBoundingClientRect();
+        this.showTooltip(point, bounds.left + bounds.width / 2, bounds.top);
+      });
+      marker.addEventListener("blur", () => this.hideTooltip());
+      marker.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") this.hideTooltip();
+      });
+      marker.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const bounds = block.getBoundingClientRect();
+        this.showTooltip(point, bounds.left + bounds.width / 2, bounds.top);
+      });
+      this.svg.append(marker);
     }
 
     const roundedZoom = this.zoom >= 10 ? Math.round(this.zoom) : Math.round(this.zoom * 10) / 10;
@@ -404,6 +421,43 @@ class TimelineChart {
 
   x(timestamp) {
     return this.marginLeft + ((timestamp - this.viewStart) / this.viewSpan()) * this.plotWidth();
+  }
+
+  showTooltip(point, clientX, clientY) {
+    const accepted = point.event.status === "success";
+    const heading = element("strong", "timeline-tooltip-title");
+    heading.textContent = `${accepted ? "Accepted" : "Failed"}${point.event.appVersion ? ` · Version ${point.event.appVersion}` : ""}`;
+    const timing = element("span", "timeline-tooltip-timing");
+    timing.textContent = `Submitted ${dateTime(point.startTime)}\nApple replied ${dateTime(point.endTime)}`;
+    const content = [heading, timing];
+    const reason = accepted ? "" : publicRejectionReason(point.event.rejectionReason);
+    if (reason) {
+      const copy = element("span", "timeline-tooltip-reason");
+      copy.textContent = reason;
+      content.push(copy);
+    }
+    this.tooltip.replaceChildren(...content);
+    this.tooltip.classList.add("is-visible");
+    this.tooltip.setAttribute("aria-hidden", "false");
+    this.positionTooltip(clientX, clientY);
+  }
+
+  positionTooltip(clientX, clientY) {
+    if (!this.tooltip.classList.contains("is-visible")) return;
+    const bounds = this.tooltip.getBoundingClientRect();
+    const viewportWidth = document.documentElement.clientWidth;
+    const viewportHeight = document.documentElement.clientHeight;
+    const left = clamp(clientX + 14, 10, Math.max(10, viewportWidth - bounds.width - 10));
+    let top = clientY - bounds.height - 14;
+    if (top < 10) top = clientY + 18;
+    top = clamp(top, 10, Math.max(10, viewportHeight - bounds.height - 10));
+    this.tooltip.style.left = `${left}px`;
+    this.tooltip.style.top = `${top}px`;
+  }
+
+  hideTooltip() {
+    this.tooltip.classList.remove("is-visible");
+    this.tooltip.setAttribute("aria-hidden", "true");
   }
 }
 
@@ -451,7 +505,7 @@ function formatAxisDate(timestamp, span) {
 }
 
 function dateTime(value) {
-  const timestamp = Date.parse(value);
+  const timestamp = typeof value === "number" ? value : Date.parse(value);
   if (!Number.isFinite(timestamp)) return "Unknown date";
   return new Intl.DateTimeFormat(undefined, {
     year: "numeric",
@@ -470,6 +524,11 @@ function compareEvents(left, right) {
 function eventTime(event) {
   const timestamp = Date.parse(event?.occurredAt);
   return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function publicRejectionReason(value) {
+  if (typeof value !== "string") return "";
+  return value.replace(/(?:^|\n)\s*Next Steps\b[\s\S]*$/i, "").trim();
 }
 
 function appStoreUrl(appStoreId) {

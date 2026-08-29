@@ -14,6 +14,7 @@ interface TimelineEventRow {
   app_icon_url: string | null;
   app_version: string | null;
   status: "issue" | "success";
+  submitted_at: string | null;
   latest_event_at: string;
   rejection_reason: string | null;
 }
@@ -108,7 +109,7 @@ export default {
 async function getTimeline(env: Env): Promise<Response> {
   const result = await env.DB.prepare(
     `SELECT r.submission_id, r.app_name, r.platform, r.app_store_id, r.app_version,
-            r.status, r.latest_event_at, r.rejection_reason,
+            r.status, r.submitted_at, r.latest_event_at, r.rejection_reason,
             COALESCE(
               r.app_icon_url,
               (
@@ -135,6 +136,7 @@ async function getTimeline(env: Env): Promise<Response> {
         appIconUrl: event.app_icon_url,
         appVersion: event.app_version,
         status: event.status,
+        submittedAt: event.submitted_at,
         occurredAt: event.latest_event_at,
         rejectionReason: event.status === "issue" ? event.rejection_reason : null,
       })),

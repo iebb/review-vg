@@ -90,7 +90,7 @@ export function parseReviewEmail(input: EmailInput): ParsedReviewEmail | null {
     status === "issue" ? extractSection(combined, "Issue Description", "Next Steps") : null;
   const nextSteps = status === "issue" ? extractSection(combined, "Next Steps", "Resources") : null;
   const rejectionReason = status === "issue"
-    ? buildRejectionReason(guideline, issueDescription, nextSteps) ?? FALLBACK_REJECTION_REASON
+    ? buildRejectionReason(guideline, issueDescription) ?? FALLBACK_REJECTION_REASON
     : null;
 
   return {
@@ -128,12 +128,10 @@ function extractAppVersion(text: string, expectedPlatform: string): string | nul
 function buildRejectionReason(
   guideline: { code: string; title: string } | null,
   issueDescription: string | null,
-  nextSteps: string | null,
 ): string | null {
   const sections = [
     guideline ? `Guideline ${guideline.code} - ${guideline.title}` : null,
     issueDescription ? `Issue Description\n${issueDescription}` : null,
-    nextSteps ? `Next Steps\n${nextSteps}` : null,
   ].filter((section): section is string => Boolean(section));
   return sections.length > 0 ? sections.join("\n\n") : null;
 }

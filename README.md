@@ -2,7 +2,7 @@
 
 A Cloudflare Worker that serves the review.vg static site, receives App Store Connect review emails at `report@review.vg`, parses their review lifecycle, and stores the public facts in D1. It accepts both ordinary forwards and batches of attached `.eml` / `message/rfc822` emails.
 
-The public site includes one date-scaled, zoomable timeline for every app and operating-system pair. Each unique Submission ID is one rounded marker: red for a failed review and green for an accepted review. Separate submissions of the same app version remain separate markers. Rejection reasons appear beneath their matching app/OS timeline; no separate record feed is published.
+The public site includes one date-scaled, zoomable timeline for every app and operating-system pair. Each unique Submission ID is one rounded duration bar spanning submission to Apple's reply: red for a failed review and green for an accepted review. Separate submissions of the same app version remain separate bars. Rejection reasons appear only when their failed bars are hovered or focused; no separate record feed is published.
 
 When an approval arrives, the Worker uses the public App Store ID in Apple's lookup API to fetch and store the app icon. The site links that icon to the public App Store page. Icon lookup is bounded and fail-soft, so an Apple lookup outage does not discard a valid review result.
 
@@ -17,7 +17,9 @@ Gmail automatic-forwarding verification emails from the exact visible sender `fo
 - The App Store Connect organization UUID from each valid message (stored privately)
 - Submitted, issue, and successful timestamps
 - Review status, guideline, issue description, and next steps
-- A complete rejection reason assembled from the guideline, issue description, and next steps
+- A public rejection reason assembled from the guideline and issue description
+
+Apple's next-steps text is retained only in its private structured D1 field and is never returned by the public API or displayed by the site.
 
 Forwarding addresses and raw MIME are not stored. Developer names and organization UUIDs are not published. Canonical App Store submission IDs are the D1 primary keys and deduplicate records.
 
