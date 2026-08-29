@@ -140,9 +140,10 @@ html:lang(zh-CN) .hero h1, html:lang(ja) .hero h1 { font-size: clamp(60px, 7vw, 
 .app-name-reveal-icon:hover:not(:disabled), .app-name-reveal-icon:focus-visible { background: var(--green); outline: 3px solid rgba(23, 107, 82, .2); outline-offset: 2px; }
 .app-name-reveal-icon:disabled { cursor: default; }
 .app-name-reveal-popover { display: none; }
-.app-name-reveal-label { max-width: 100%; appearance: none; overflow: hidden; padding: 0; color: inherit; border: 0; border-bottom: 1px dashed currentColor; background: transparent; font: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.app-name-reveal-label:hover:not(:disabled), .app-name-reveal-label:focus-visible { color: var(--green); outline: none; }
-.app-name-reveal-label:disabled { border-bottom-color: transparent; cursor: default; opacity: 1; }
+.app-name-reveal-label { max-width: 100%; appearance: none; overflow: hidden; padding: 0; color: inherit; border: 0; border-radius: 3px; background: transparent; font: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.app-name-reveal-label:hover:not(:disabled) { color: var(--green); }
+.app-name-reveal-label:focus-visible { color: var(--green); outline: 2px solid rgba(23, 107, 82, .32); outline-offset: 2px; }
+.app-name-reveal-label:disabled { cursor: default; opacity: 1; }
 .timeline-name { min-width: 0; }
 .timeline-name h3 { overflow: hidden; margin: 0 0 3px; font-size: 13px; letter-spacing: -.025em; text-overflow: ellipsis; white-space: nowrap; }
 .timeline-app-meta { min-width: 0; display: flex; align-items: center; gap: 5px; overflow: hidden; white-space: nowrap; }
@@ -190,7 +191,7 @@ html:lang(zh-CN) .hero h1, html:lang(ja) .hero h1 { font-size: clamp(60px, 7vw, 
 .review-leaderboard-card.issue h4 i { background: var(--coral); }
 .review-leaderboard-card.fast h4 i { background: var(--yellow); }
 .review-leaderboard-list { margin: 0; padding: 0; list-style: none; }
-.review-leaderboard-entry { min-width: 0; display: grid; grid-template-columns: 22px 32px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 13px 14px; border-bottom: 1px solid rgba(23, 32, 30, .08); }
+.review-leaderboard-entry { min-width: 0; height: 78px; box-sizing: border-box; display: grid; grid-template-columns: 22px 32px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 13px 14px; border-bottom: 1px solid rgba(23, 32, 30, .08); }
 .review-leaderboard-entry:last-child { border-bottom: 0; }
 .review-leaderboard-rank { color: rgba(104, 113, 109, .66); font-size: 11px; font-variant-numeric: tabular-nums; font-weight: 760; }
 .review-leaderboard-icon { display: grid; place-items: center; }

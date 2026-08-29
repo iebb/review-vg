@@ -15,4 +15,15 @@ describe("review leaderboards", () => {
     expect(translations).toContain("Las 20 revisiones");
     expect(translations).toContain("上位20件");
   });
+
+  it("uses equal-height rows and leaves unapproved names unlined", async () => {
+    const styles = await readFile(new URL("public/styles.css", projectUrl), "utf8");
+    const rowRule = styles.match(/\.review-leaderboard-entry \{([^}]*)\}/)?.[1] || "";
+    const revealRule = styles.match(/\.app-name-reveal-label \{([^}]*)\}/)?.[1] || "";
+
+    expect(rowRule).toContain("height: 78px");
+    expect(rowRule).toContain("box-sizing: border-box");
+    expect(revealRule).toContain("border: 0");
+    expect(revealRule).not.toContain("border-bottom");
+  });
 });
