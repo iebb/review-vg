@@ -1,0 +1,79 @@
+INSERT OR IGNORE INTO reviews (
+  submission_id,
+  app_name,
+  platform,
+  organization_id,
+  app_store_id,
+  app_version,
+  status,
+  submitted_at,
+  issue_at,
+  successful_at,
+  latest_event_at,
+  submitted_via,
+  guideline_code,
+  guideline_title,
+  rejection_reason,
+  issue_description,
+  next_steps,
+  verification
+) VALUES
+(
+  '75deca1f-788c-4807-835b-2dbafca0740c',
+  'Telisten',
+  'iOS',
+  'cbaca10a-f696-4d2b-959e-0d3fa1b23452',
+  '6804541534',
+  '1.0.0',
+  'issue',
+  '2026-08-28T03:05:00.000Z',
+  '2026-08-28T15:14:24.000Z',
+  NULL,
+  '2026-08-28T15:14:24.000Z',
+  'API Key',
+  '4.3(a)',
+  'Design - Spam',
+  replace('Guideline 4.3(a) - Design - Spam\n\nIssue Description\nWe noticed the app shares a similar binary, metadata, and/or concept as apps submitted to the App Store by you or other developers, with only minor differences.\nSubmitting similar or repackaged apps is a form of spam that creates clutter and makes it difficult for users to discover new apps.\n\nNext Steps\nSince we do not accept spam apps on the App Store, we encourage you to review the app concept and submit a unique app with distinct content and functionality.', '\n', char(10)),
+  replace('We noticed the app shares a similar binary, metadata, and/or concept as apps submitted to the App Store by you or other developers, with only minor differences.\nSubmitting similar or repackaged apps is a form of spam that creates clutter and makes it difficult for users to discover new apps.', '\n', char(10)),
+  'Since we do not accept spam apps on the App Store, we encourage you to review the app concept and submit a unique app with distinct content and functionality.',
+  'apple-authenticated'
+),
+(
+  '6c88cc8c-96e0-495d-9a36-f88613be69a6',
+  'Mithka',
+  'iOS',
+  'cbaca10a-f696-4d2b-959e-0d3fa1b23452',
+  '6783830742',
+  '1.2.6',
+  'success',
+  '2026-08-26T07:00:00.000Z',
+  NULL,
+  '2026-08-26T21:16:33.000Z',
+  '2026-08-26T21:16:33.000Z',
+  'API Key',
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'apple-authenticated'
+);
+
+INSERT OR IGNORE INTO review_events (
+  event_key,
+  submission_id,
+  event_type,
+  occurred_at
+) VALUES
+(
+  '75deca1f-788c-4807-835b-2dbafca0740c:issue:2026-08-28T15:14:24.000Z',
+  '75deca1f-788c-4807-835b-2dbafca0740c',
+  'issue',
+  '2026-08-28T15:14:24.000Z'
+),
+(
+  '6c88cc8c-96e0-495d-9a36-f88613be69a6:success:2026-08-26T21:16:33.000Z',
+  '6c88cc8c-96e0-495d-9a36-f88613be69a6',
+  'success',
+  '2026-08-26T21:16:33.000Z'
+);

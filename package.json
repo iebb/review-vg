@@ -1,0 +1,28 @@
+{
+  "name": "review-vg",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm test",
+    "cf-types": "wrangler types",
+    "db:migrate:local": "wrangler d1 migrations apply review-vg --local",
+    "db:migrate:remote": "wrangler d1 migrations apply review-vg --remote",
+    "db:seed:local": "wrangler d1 execute review-vg --local --file ./seed/initial.sql",
+    "db:seed:remote": "wrangler d1 execute review-vg --remote --file ./seed/initial.sql"
+  },
+  "dependencies": {
+    "postal-mime": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.127.1"
+  }
+}
