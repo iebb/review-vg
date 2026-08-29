@@ -196,6 +196,13 @@ code { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, mono
     box-shadow: 10px 0 18px -18px rgba(23, 32, 30, .9);
     touch-action: pan-y;
   }
+  .timeline-axis-row {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    background: var(--card);
+    box-shadow: 0 -10px 18px -18px rgba(23, 32, 30, .9);
+  }
   .timeline-axis-spacer {
     position: sticky;
     left: 0;
