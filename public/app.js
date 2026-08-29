@@ -420,11 +420,15 @@ class SharedTimelineChart {
       marker.setAttribute("role", "img");
       marker.setAttribute("aria-label", accessibleLabel);
       const block = svgElement("rect", "timeline-event-block");
-      const width = Math.max(2, endX - startX);
-      const rightEdge = this.width - this.marginRight;
-      const blockX = Math.min(startX, rightEdge - width);
       const track = trackLayout(lane.trackCount, point.track);
-      setAttributes(block, { x: blockX, y: track.y, width, height: track.height, rx: 6, ry: 6 });
+      const durationWidth = Math.max(0, endX - startX);
+      const width = Math.max(track.height, durationWidth);
+      const midpoint = (startX + endX) / 2;
+      const unclampedX = durationWidth < track.height ? midpoint - width / 2 : startX;
+      const rightEdge = this.width - this.marginRight;
+      const blockX = clamp(unclampedX, this.marginLeft, rightEdge - width);
+      const radius = track.height / 2;
+      setAttributes(block, { x: blockX, y: track.y, width, height: track.height, rx: radius, ry: radius });
       marker.append(block);
       marker.addEventListener("pointerenter", (event) => this.showTooltip(point, event.clientX, event.clientY));
       marker.addEventListener("pointermove", (event) => this.positionTooltip(event.clientX, event.clientY));
@@ -536,9 +540,9 @@ function assignPointTracks(points) {
 }
 
 function trackLayout(trackCount, trackIndex) {
-  const available = 36;
-  const gap = trackCount > 6 ? 1 : 2;
-  const maximumHeight = trackCount === 1 ? 20 : 12;
+  const available = 28;
+  const gap = trackCount > 5 ? 1 : 3;
+  const maximumHeight = trackCount === 1 ? 12 : 8;
   const height = Math.max(2, Math.min(maximumHeight, (available - gap * (trackCount - 1)) / trackCount));
   const used = height * trackCount + gap * (trackCount - 1);
   return {

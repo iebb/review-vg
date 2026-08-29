@@ -173,6 +173,38 @@ code { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, mono
   .how { grid-template-columns: 1fr; gap: 55px; }
 }
 
+@media (max-width: 820px) {
+  .timeline-board-body {
+    --app-column: 180px;
+    --platform-column: 64px;
+    max-height: min(68vh, 560px);
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+  .timeline-app-identity {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    background: var(--card);
+    touch-action: pan-y;
+  }
+  .timeline-platform-label {
+    position: sticky;
+    left: var(--app-column);
+    z-index: 3;
+    background: #f8f5ed;
+    box-shadow: 10px 0 18px -18px rgba(23, 32, 30, .9);
+    touch-action: pan-y;
+  }
+  .timeline-axis-spacer {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    background: var(--card);
+    box-shadow: 10px 0 18px -18px rgba(23, 32, 30, .9);
+  }
+}
+
 @media (max-width: 680px) {
   .shell { width: min(100% - 28px, 1180px); }
   .site-header { height: 72px; }
@@ -193,7 +225,7 @@ code { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, mono
   .timeline-header { align-items: start; flex-direction: column; gap: 24px; }
   .timeline-board-toolbar { align-items: stretch; flex-direction: column; gap: 12px; }
   .timeline-controls { justify-content: center; }
-  .timeline-board-body { --app-column: 150px; --platform-column: 58px; }
+  .timeline-board-body { --app-column: 150px; --platform-column: 58px; max-height: min(62vh, 480px); }
   .timeline-app-group, .timeline-axis-row { min-width: 680px; }
   .timeline-app-identity { padding-inline: 9px; }
   .timeline-name h3 { font-size: 12px; }
