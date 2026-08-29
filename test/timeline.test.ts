@@ -25,6 +25,7 @@ interface FakeTimelineRow {
   issue_description?: string | null;
   forwarded_from?: string | null;
   has_approved: number;
+  in_timeline: number;
 }
 
 function fakeEnvironment(rows: FakeTimelineRow[]) {
@@ -63,10 +64,14 @@ describe("public timeline", () => {
       issue_description: "Private rejection details",
       forwarded_from: "developer@example.com",
       has_approved: 0,
+      in_timeline: 1,
     }]);
 
     const response = await getTimeline(fixture.env);
-    const body = await response.json() as { events: Array<Record<string, unknown>> };
+    const body = await response.json() as {
+      events: Array<Record<string, unknown>>;
+      leaderboardEvents: Array<Record<string, unknown>>;
+    };
 
     expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
     expect(body.events[0]).toMatchObject({
@@ -82,6 +87,7 @@ describe("public timeline", () => {
     expect(JSON.stringify(body)).not.toContain("rejectionReason");
     expect(JSON.stringify(body)).not.toContain("Issue Description");
     expect(JSON.stringify(body)).not.toContain("Private rejection details");
+    expect(body.leaderboardEvents).toHaveLength(1);
   });
 
   it("identifies manual and Gmail automatic forwarding sources", () => {
@@ -93,26 +99,42 @@ describe("public timeline", () => {
     expect(forwardedFromAddress({
       from: { address: "no_reply@email.apple.com" },
       headers: [],
-    }, "developer+caf_=report=review.vg@gmail.com")).toBe("developer@gmail.com");
+    }, "developer+caf_=apple=review.vg@gmail.com")).toBe("developer@gmail.com");
   });
 
   it("accepts every review.vg local part and rejects other domains", () => {
+    expect(isReviewRecipient("apple@review.vg")).toBe(true);
     expect(isReviewRecipient("report@review.vg")).toBe(true);
     expect(isReviewRecipient("anything+review@REVIEW.VG")).toBe(true);
-    expect(isReviewRecipient("report@other.example")).toBe(false);
+    expect(isReviewRecipient("apple@other.example")).toBe(false);
     expect(isReviewRecipient("@review.vg")).toBe(false);
   });
 
-  it("selects only apps submitted in the last 60 days and includes approval state", async () => {
+  it("marks six-month timeline events while retaining all history for leaderboards", async () => {
     const fixture = fakeEnvironment([]);
 
     await getTimeline(fixture.env);
 
+    expect(fixture.query()).toContain("julianday('now', '-6 months')");
     expect(fixture.query()).toContain("julianday('now', '-60 days')");
     expect(fixture.query()).toContain("SELECT r.submission_id, r.app_name");
-    expect(fixture.query()).toContain("eligible.has_approved");
+    expect(fixture.query()).toContain("states.has_approved");
+    expect(fixture.query()).toContain("END AS in_timeline");
     expect(fixture.query()).toContain("LEFT JOIN app_metadata AS metadata");
+    expect(fixture.query()).not.toContain("LIMIT 1000");
     expect(fixture.query()).not.toContain("r.app_icon_url");
+  });
+
+  it("advertises apple@review.vg without exposing the former primary address", async () => {
+    const [html, script, translations] = await Promise.all([
+      readFile(new URL("public/index.html", projectUrl), "utf8"),
+      readFile(new URL("public/app.js", projectUrl), "utf8"),
+      readFile(new URL("public/i18n.js", projectUrl), "utf8"),
+    ]);
+    const publicFiles = `${html}\n${script}\n${translations}`;
+
+    expect(publicFiles).toContain("apple@review.vg");
+    expect(publicFiles).not.toContain("report@review.vg");
   });
 
   it("reveals the already-loaded app name without a second API request", async () => {

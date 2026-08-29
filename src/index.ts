@@ -3,7 +3,6 @@ import { approveGmailForwarding, gmailForwardingConfirmationUrl } from "./gmail-
 import { fetchAppStoreMetadata, type AppStoreMetadata, type Fetcher } from "./app-store";
 import type { ParsedReviewEmail } from "./parser";
 
-const REPORT_ADDRESS = "report@review.vg";
 const MAX_EMAIL_BYTES = 20 * 1024 * 1024;
 const RAW_EMAIL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const RAW_EMAIL_MAX_MESSAGES = 1000;
@@ -24,6 +23,7 @@ interface TimelineEventRow {
   guideline_code: string | null;
   guideline_title: string | null;
   has_approved: number;
+  in_timeline: number;
 }
 
 interface ForwardingSourceEmail {
@@ -272,48 +272,55 @@ function boundedArchiveValue(value: string | null, maximumLength: number): strin
 
 export async function getTimeline(env: Pick<Env, "DB">): Promise<Response> {
   const result = await env.DB.prepare(
-    `WITH eligible_apps AS (
+    `WITH app_states AS (
        SELECT app_store_id,
-              MAX(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS has_approved
+              MAX(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS has_approved,
+              MAX(julianday(COALESCE(submitted_at, latest_event_at))) AS latest_submission_at
          FROM reviews
         WHERE app_store_id IS NOT NULL
         GROUP BY app_store_id
-       HAVING MAX(julianday(COALESCE(submitted_at, latest_event_at))) >=
-              julianday('now', '-60 days')
-     ), latest_events AS (
-       SELECT r.submission_id, r.app_name,
-              r.platform, r.app_store_id, r.app_version, r.status, r.submitted_at,
-              r.latest_event_at, r.guideline_code, r.guideline_title, eligible.has_approved,
-              metadata.app_icon_url,
-              metadata.app_category
-         FROM reviews AS r
-         JOIN eligible_apps AS eligible ON eligible.app_store_id = r.app_store_id
-         LEFT JOIN app_metadata AS metadata ON metadata.app_store_id = r.app_store_id
-        ORDER BY r.latest_event_at DESC
-        LIMIT 1000
      )
-     SELECT *
-       FROM latest_events
+     SELECT r.submission_id, r.app_name,
+            r.platform, r.app_store_id, r.app_version, r.status, r.submitted_at,
+            r.latest_event_at, r.guideline_code, r.guideline_title, states.has_approved,
+            metadata.app_icon_url,
+            metadata.app_category,
+            CASE
+              WHEN julianday(COALESCE(r.submitted_at, r.latest_event_at)) >=
+                   julianday('now', '-6 months')
+               AND (
+                 states.has_approved = 1 OR
+                 states.latest_submission_at >= julianday('now', '-60 days')
+               )
+              THEN 1
+              ELSE 0
+            END AS in_timeline
+       FROM reviews AS r
+       JOIN app_states AS states ON states.app_store_id = r.app_store_id
+       LEFT JOIN app_metadata AS metadata ON metadata.app_store_id = r.app_store_id
       ORDER BY latest_event_at ASC`,
   ).all<TimelineEventRow>();
 
+  const publicEvents = result.results.map((event) => ({
+    submissionId: event.submission_id,
+    appName: event.app_name,
+    hasApproved: event.has_approved === 1,
+    platform: event.platform,
+    appStoreId: event.app_store_id,
+    appIconUrl: event.app_icon_url,
+    appCategory: event.app_category,
+    appVersion: event.app_version,
+    status: event.status,
+    submittedAt: event.submitted_at,
+    occurredAt: event.latest_event_at,
+    guidelineCode: event.status === "issue" ? event.guideline_code : null,
+    guidelineTitle: event.status === "issue" ? event.guideline_title : null,
+  }));
+
   return json(
     {
-      events: result.results.map((event) => ({
-        submissionId: event.submission_id,
-        appName: event.app_name,
-        hasApproved: event.has_approved === 1,
-        platform: event.platform,
-        appStoreId: event.app_store_id,
-        appIconUrl: event.app_icon_url,
-        appCategory: event.app_category,
-        appVersion: event.app_version,
-        status: event.status,
-        submittedAt: event.submitted_at,
-        occurredAt: event.latest_event_at,
-        guidelineCode: event.status === "issue" ? event.guideline_code : null,
-        guidelineTitle: event.status === "issue" ? event.guideline_title : null,
-      })),
+      events: publicEvents.filter((_event, index) => result.results[index].in_timeline === 1),
+      leaderboardEvents: publicEvents,
     },
     200,
     {

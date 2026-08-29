@@ -74,7 +74,7 @@ describe("attached email ingestion", () => {
       date: "Fri, 28 Aug 2026 16:14:24 +0000",
     });
     const outer = `From: Developer <developer@example.com>
-To: report@review.vg
+To: apple@review.vg
 Subject: App review batch
 Date: Sat, 29 Aug 2026 06:00:00 +0000
 Message-ID: <batch@example.com>

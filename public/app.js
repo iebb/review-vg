@@ -1,5 +1,6 @@
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DAY = 24 * 60 * 60 * 1000;
+const PRIMARY_INBOX_ADDRESS = "apple@review.vg";
 const timelinesNode = document.querySelector("#timelines");
 const I18N = window.ReviewI18n || {
   locale: "en",
@@ -12,7 +13,7 @@ const t = (key, variables) => I18N.t(key, variables);
 document.querySelector("#copy-address")?.addEventListener("click", async (event) => {
   const button = event.currentTarget;
   try {
-    await navigator.clipboard.writeText("report@review.vg");
+    await navigator.clipboard.writeText(PRIMARY_INBOX_ADDRESS);
     button.classList.add("is-copied");
     button.querySelector(".copy-label").textContent = t("common.copied");
     window.setTimeout(() => {
@@ -20,7 +21,7 @@ document.querySelector("#copy-address")?.addEventListener("click", async (event)
       button.querySelector(".copy-label").textContent = t("common.copy");
     }, 1600);
   } catch {
-    window.location.href = "mailto:report@review.vg";
+    window.location.href = `mailto:${PRIMARY_INBOX_ADDRESS}`;
   }
 });
 
@@ -30,7 +31,11 @@ async function loadTimelines() {
     const response = await fetch("/api/timeline");
     if (!response.ok) throw new Error(`Timeline request failed: ${response.status}`);
     const data = await response.json();
-    renderTimelines(Array.isArray(data.events) ? data.events : []);
+    const timelineEvents = Array.isArray(data.events) ? data.events : [];
+    const leaderboardEvents = Array.isArray(data.leaderboardEvents)
+      ? data.leaderboardEvents
+      : timelineEvents;
+    renderTimelines(timelineEvents, leaderboardEvents);
   } catch (error) {
     timelinesNode.replaceChildren(emptyState(
       t("timeline.errorTitle"),
@@ -42,8 +47,8 @@ async function loadTimelines() {
   }
 }
 
-function renderTimelines(events) {
-  if (events.length === 0) {
+function renderTimelines(timelineEvents, leaderboardEvents) {
+  if (timelineEvents.length === 0 && leaderboardEvents.length === 0) {
     timelinesNode.replaceChildren(emptyState(
       t("timeline.emptyTitle"),
       t("timeline.emptyCopy"),
@@ -51,8 +56,9 @@ function renderTimelines(events) {
     return;
   }
 
-  const apps = groupApps(events);
-  timelinesNode.replaceChildren(createSharedTimeline(apps));
+  const apps = groupApps(timelineEvents);
+  const leaderboardApps = groupApps(leaderboardEvents);
+  timelinesNode.replaceChildren(createSharedTimeline(apps, leaderboardApps));
 }
 
 function groupApps(events) {
@@ -111,7 +117,7 @@ function groupApps(events) {
     .sort((left, right) => right.latestEventAt - left.latestEventAt || left.appName.localeCompare(right.appName, I18N.locale));
 }
 
-function createSharedTimeline(apps) {
+function createSharedTimeline(apps, leaderboardApps) {
   const experience = element("div", "timeline-experience");
   const board = element("article", "timeline-board");
   const toolbar = element("header", "timeline-board-toolbar");
@@ -143,7 +149,7 @@ function createSharedTimeline(apps) {
   allCategories.value = "";
   allCategories.textContent = t("timeline.allCategories");
   categorySelect.append(allCategories);
-  const categories = [...new Set(apps.map((app) => app.appCategory))]
+  const categories = [...new Set([...apps, ...leaderboardApps].map((app) => app.appCategory))]
     .sort((left, right) => localizedCategory(left).localeCompare(localizedCategory(right), I18N.locale));
   for (const category of categories) {
     const option = document.createElement("option");
@@ -251,8 +257,11 @@ function createSharedTimeline(apps) {
     noMatches.hidden = visibleApps !== 0;
     body.hidden = visibleApps === 0;
     footer.hidden = visibleApps === 0;
-    leaderboards.node.hidden = visibleApps === 0;
-    leaderboards.render(filteredApps);
+    const filteredLeaderboardApps = leaderboardApps.filter((app) => (
+      !selectedCategory || app.appCategory === selectedCategory
+    ));
+    leaderboards.node.hidden = filteredLeaderboardApps.length === 0;
+    leaderboards.render(filteredLeaderboardApps);
   };
   categorySelect.addEventListener("change", applyFilters);
   applyFilters();
@@ -330,7 +339,7 @@ function leaderboardEntries(apps, status, slowest) {
     eventTime(right.event) - eventTime(left.event) ||
     String(left.event.submissionId).localeCompare(String(right.event.submissionId))
   ));
-  return entries.slice(0, 20);
+  return entries.slice(0, 10);
 }
 
 function createLeaderboardEntry(entry, rank) {

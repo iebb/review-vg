@@ -10,7 +10,7 @@ async function gmailMessage(
   from = "Gmail Team <forwarding-noreply@google.com>",
 ) {
   return PostalMime.parse(`From: ${from}
-To: report@review.vg
+To: apple@review.vg
 Subject: (Gmail Forwarding Confirmation - Receive Mail from developer@gmail.com
 Date: Sat, 29 Aug 2026 06:20:00 +0000
 Message-ID: <forwarding-confirmation@mail.gmail.com>
