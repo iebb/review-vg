@@ -57,7 +57,7 @@ export async function extractReviewsFromEmail(
 
     const parsed = parseReviewEmail(toEmailInput(current));
     if (parsed) {
-      reviews.push(current.depth === 0 ? parsed : { ...parsed, verification: "forwarded-email" });
+      reviews.push(parsed);
     }
 
     if (current.depth >= MAX_ATTACHED_DEPTH) continue;
@@ -89,19 +89,41 @@ export async function extractReviewsFromEmail(
   }
 
   return {
-    reviews: deduplicateReviewEvents(reviews),
+    reviews: deduplicateSubmissions(reviews),
     attachedEmailsSeen,
     skippedAttachments,
   };
 }
 
-export function deduplicateReviewEvents(reviews: ParsedReviewEmail[]): ParsedReviewEmail[] {
+export function deduplicateSubmissions(reviews: ParsedReviewEmail[]): ParsedReviewEmail[] {
   const unique = new Map<string, ParsedReviewEmail>();
   for (const review of reviews) {
-    const key = `${review.submissionId}:${review.status}:${review.eventAt}`;
-    if (!unique.has(key)) unique.set(key, review);
+    const existing = unique.get(review.submissionId);
+    unique.set(review.submissionId, existing ? mergeSubmission(existing, review) : review);
   }
   return [...unique.values()];
+}
+
+function mergeSubmission(
+  existing: ParsedReviewEmail,
+  incoming: ParsedReviewEmail,
+): ParsedReviewEmail {
+  const newer = incoming.eventAt > existing.eventAt ? incoming : existing;
+  return {
+    ...newer,
+    appVersion: newer.appVersion ?? existing.appVersion ?? incoming.appVersion,
+    status: existing.status === "success" || incoming.status === "success" ? "success" : "issue",
+    submittedAt: existing.submittedAt ?? incoming.submittedAt,
+    issueAt: existing.issueAt ?? incoming.issueAt,
+    successfulAt: existing.successfulAt ?? incoming.successfulAt,
+    eventAt: existing.eventAt > incoming.eventAt ? existing.eventAt : incoming.eventAt,
+    submittedVia: existing.submittedVia ?? incoming.submittedVia,
+    guidelineCode: existing.guidelineCode ?? incoming.guidelineCode,
+    guidelineTitle: existing.guidelineTitle ?? incoming.guidelineTitle,
+    rejectionReason: existing.rejectionReason ?? incoming.rejectionReason,
+    issueDescription: existing.issueDescription ?? incoming.issueDescription,
+    nextSteps: existing.nextSteps ?? incoming.nextSteps,
+  };
 }
 
 function toEmailInput({ email, envelopeFrom, extraAuthenticationHeaders }: QueuedEmail) {

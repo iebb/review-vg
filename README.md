@@ -2,7 +2,7 @@
 
 A Cloudflare Worker that serves the review.vg static site, receives App Store Connect review emails at `report@review.vg`, parses their review lifecycle, and stores the public facts in D1. It accepts both ordinary forwards and batches of attached `.eml` / `message/rfc822` emails.
 
-The public site includes an event timeline for every app and operating-system pair: rounded red blocks are failed reviews and rounded green blocks are accepted reviews.
+The public site includes a timeline for every app and operating-system pair: each unique Submission ID is one block, rounded red for a failed review and rounded green for an accepted review. Separate submissions of the same app version remain separate blocks.
 
 Gmail automatic-forwarding verification emails from the exact visible sender `forwarding-noreply@google.com` are approved automatically, including mail delivered through Google's bounce-envelope domains. The Worker loads a validated Google `mail/vf-…` confirmation page, submits its confirmation form, and requires Gmail's success response without storing the forwarding address, token, or cookies.
 
@@ -16,7 +16,6 @@ Gmail automatic-forwarding verification emails from the exact visible sender `fo
 - Submitted, issue, and successful timestamps
 - Review status, guideline, issue description, and next steps
 - A complete rejection reason assembled from the guideline, issue description, and next steps
-- Authentication classification (`apple-authenticated` or `forwarded-email`)
 
 Forwarding addresses and raw MIME are not stored. Developer names and organization UUIDs are not published. Canonical App Store submission IDs are the D1 primary keys and deduplicate records.
 

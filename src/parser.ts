@@ -1,5 +1,4 @@
 export type ReviewStatus = "issue" | "success";
-export type Verification = "apple-authenticated" | "forwarded-email";
 
 export interface EmailInput {
   subject: string;
@@ -30,7 +29,6 @@ export interface ParsedReviewEmail {
   rejectionReason: string | null;
   issueDescription: string | null;
   nextSteps: string | null;
-  verification: Verification;
   messageId: string;
 }
 
@@ -80,10 +78,6 @@ export function parseReviewEmail(input: EmailInput): ParsedReviewEmail | null {
   const status = subjectMatch.status;
   const guideline = status === "issue" ? extractGuideline(combined) : null;
   const topLevelApple = normalizeAddress(input.fromAddress) === "no_reply@email.apple.com";
-  const envelopeApple = normalizeAddress(input.envelopeFrom) === "no_reply@email.apple.com";
-  const authApple = /(?:dkim=pass[^\n;]*?(?:header\.(?:d|i)=|dkdomain=)@?email\.apple\.com|dmarc=pass[^\n;]*?fromdomain=email\.apple\.com)/i.test(
-    input.authenticationHeaders,
-  );
   const embeddedApple = /(?:From:\s*)?App Store Connect\s*<no_reply@email\.apple\.com>/i.test(
     decodeHtml(`${input.text}\n${input.html}`),
   );
@@ -112,7 +106,6 @@ export function parseReviewEmail(input: EmailInput): ParsedReviewEmail | null {
     rejectionReason: buildRejectionReason(guideline, issueDescription, nextSteps),
     issueDescription,
     nextSteps,
-    verification: topLevelApple && (envelopeApple || authApple) ? "apple-authenticated" : "forwarded-email",
     messageId: input.messageId,
   };
 }

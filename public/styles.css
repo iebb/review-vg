@@ -108,9 +108,6 @@ a { color: inherit; }
 .review-detail { border-top: 1px solid var(--line); background: rgba(246,243,234,.58); padding: 20px 30px 23px 102px; display: grid; grid-template-columns: 1fr 1fr; gap: 36px; }
 .detail-block h4 { margin: 0 0 7px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; }
 .detail-block p { margin: 0; font-size: 14px; line-height: 1.55; white-space: pre-line; }
-.verification { display: inline-flex; align-items: center; gap: 6px; margin-top: 11px; color: var(--muted); font-size: 11px; }
-.verification::before { content: ""; width: 6px; height: 6px; background: var(--green); border-radius: 50%; }
-.verification.forwarded::before { background: var(--yellow); }
 .empty-state { padding: 70px 30px; text-align: center; border: 1px dashed rgba(23,32,30,.28); border-radius: var(--radius); }
 .empty-state strong { display: block; font: 500 30px/1.2 Georgia, serif; }
 .empty-state p { color: var(--muted); margin: 10px auto 0; max-width: 460px; line-height: 1.5; }

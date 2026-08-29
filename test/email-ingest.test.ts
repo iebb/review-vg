@@ -3,6 +3,7 @@ import { extractReviewsFromMime } from "../src/email-ingest";
 
 const SUCCESS_ID = "11111111-2222-3333-4444-555555555555";
 const ISSUE_ID = "66666666-7777-8888-9999-aaaaaaaaaaaa";
+const SECOND_ISSUE_ID = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff";
 
 function appleReviewEmail(options: {
   appName: string;
@@ -50,7 +51,7 @@ ${rawEmail}
 }
 
 describe("attached email ingestion", () => {
-  it("parses multiple attached emails and removes duplicate events by submission ID", async () => {
+  it("deduplicates only by submission ID and preserves separate rejects of one version", async () => {
     const success = appleReviewEmail({
       appName: "Open Review",
       submissionId: SUCCESS_ID,
@@ -65,6 +66,13 @@ describe("attached email ingestion", () => {
       status: "issue",
       date: "Fri, 28 Aug 2026 15:14:24 +0000",
     });
+    const secondIssue = appleReviewEmail({
+      appName: "Review Notes",
+      submissionId: SECOND_ISSUE_ID,
+      organizationId: "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+      status: "issue",
+      date: "Fri, 28 Aug 2026 16:14:24 +0000",
+    });
     const outer = `From: Developer <developer@example.com>
 To: report@review.vg
 Subject: App review batch
@@ -77,24 +85,30 @@ Content-Type: multipart/mixed; boundary="review-batch"
 Content-Type: text/plain; charset=UTF-8
 
 Attached review emails.
-${attach(success, "success-one.eml")}${attach(success, "success-duplicate.eml")}${attach(issue, "issue.eml")}--review-batch--
+${attach(success, "success-one.eml")}${attach(success, "success-duplicate.eml")}${attach(issue, "issue-one.eml")}${attach(secondIssue, "issue-two.eml")}--review-batch--
 `;
 
     const extracted = await extractReviewsFromMime(outer, "developer@example.com");
 
-    expect(extracted.attachedEmailsSeen).toBe(3);
+    expect(extracted.attachedEmailsSeen).toBe(4);
     expect(extracted.skippedAttachments).toBe(0);
-    expect(extracted.reviews).toHaveLength(2);
+    expect(extracted.reviews).toHaveLength(3);
     expect(extracted.reviews.map((review) => review.submissionId).sort()).toEqual(
-      [SUCCESS_ID, ISSUE_ID].sort(),
+      [SUCCESS_ID, ISSUE_ID, SECOND_ISSUE_ID].sort(),
     );
-    expect(extracted.reviews.map((review) => review.organizationId).sort()).toEqual(
-      ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"].sort(),
-    );
-    expect(extracted.reviews.every((review) => review.verification === "forwarded-email")).toBe(true);
     expect(extracted.reviews.every((review) => review.appVersion === "1.0")).toBe(true);
-    expect(extracted.reviews.find((review) => review.status === "issue")?.rejectionReason).toContain(
-      "Guideline 2.1 - Information Needed",
+    expect(
+      extracted.reviews
+        .filter((review) => review.appName === "Review Notes" && review.status === "issue")
+        .map((review) => review.submissionId)
+        .sort(),
+    ).toEqual([ISSUE_ID, SECOND_ISSUE_ID].sort());
+    expect(
+      extracted.reviews.filter((review) => review.status === "issue").every(
+        (review) => review.rejectionReason?.includes("Guideline 2.1 - Information Needed"),
+      ),
+    ).toBe(
+      true,
     );
   });
 });

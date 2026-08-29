@@ -121,9 +121,9 @@ function reviewCard(review) {
     : "Not available";
   const detail = success
     ? `<div class="detail-block"><h4>Timeline</h4><p>Submitted ${dateTime(review.submittedAt)} and approved ${dateTime(review.successfulAt)}.</p></div>
-       <div class="detail-block"><h4>Outcome</h4><p>Review completed successfully and the submission became eligible for distribution.</p>${verification(review)}</div>`
+       <div class="detail-block"><h4>Outcome</h4><p>Review completed successfully and the submission became eligible for distribution.</p></div>`
     : `<div class="detail-block"><h4>Issue description</h4><p>${escapeHtml(review.issueDescription || "Apple reported an issue with this submission.")}</p></div>
-       <div class="detail-block"><h4>Next steps</h4><p>${escapeHtml(review.nextSteps || "See App Store Connect for the requested changes.")}</p>${verification(review)}</div>`;
+       <div class="detail-block"><h4>Next steps</h4><p>${escapeHtml(review.nextSteps || "See App Store Connect for the requested changes.")}</p></div>`;
 
   return `<article class="review-card ${review.status}">
     <div class="review-main">
@@ -141,11 +141,6 @@ function reviewCard(review) {
     </div>
     <div class="review-detail">${detail}</div>
   </article>`;
-}
-
-function verification(review) {
-  const authenticated = review.verification === "apple-authenticated";
-  return `<span class="verification ${authenticated ? "" : "forwarded"}">${authenticated ? "Apple-authenticated email" : "Community-forwarded email"}</span>`;
 }
 
 function dateTime(value) {

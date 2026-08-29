@@ -47,7 +47,6 @@ describe("parseReviewEmail", () => {
       organizationId: "cbaca10a-f696-4d2b-959e-0d3fa1b23452",
       appStoreId: "6783830742",
       submittedVia: "API Key",
-      verification: "apple-authenticated",
     });
   });
 
@@ -86,7 +85,7 @@ describe("parseReviewEmail", () => {
     });
   });
 
-  it("accepts a manual forward but labels it as forwarded", () => {
+  it("accepts a manual forward", () => {
     const result = parseReviewEmail({
       ...base,
       subject: "Fwd: Review of your Example (macOS) submission is complete.",
@@ -97,7 +96,7 @@ describe("parseReviewEmail", () => {
         Submission ID: 11111111-2222-3333-4444-555555555555`,
       html: `<a href="https://appstoreconnect.apple.com/olympus/v1/session/switchTo/cbaca10a-f696-4d2b-959e-0d3fa1b23452?targetUrl=/apps/1234567890/appstore/reviewsubmissions/details/11111111-2222-3333-4444-555555555555">View</a>`,
     });
-    expect(result?.verification).toBe("forwarded-email");
+    expect(result?.submissionId).toBe("11111111-2222-3333-4444-555555555555");
   });
 
   it("rejects unrelated email", () => {

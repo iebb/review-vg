@@ -21,7 +21,6 @@ interface ReviewRow {
   rejection_reason: string | null;
   issue_description: string | null;
   next_steps: string | null;
-  verification: "apple-authenticated" | "forwarded-email";
 }
 
 interface StatsRow {
@@ -36,8 +35,8 @@ interface TimelineEventRow {
   app_name: string;
   platform: string;
   app_version: string | null;
-  event_type: "issue" | "success";
-  occurred_at: string;
+  status: "issue" | "success";
+  latest_event_at: string;
 }
 
 export default {
@@ -104,7 +103,6 @@ export default {
         JSON.stringify({
           event: "review_email_stored",
           submissions: stored.submissions,
-          events: stored.events,
           attachedEmailsSeen: extracted.attachedEmailsSeen,
           skippedAttachments: extracted.skippedAttachments,
         }),
@@ -132,7 +130,7 @@ async function getReviews(request: Request, env: Env): Promise<Response> {
   const reviewStatement = env.DB.prepare(
       `SELECT submission_id, app_name, platform, app_store_id, app_version, status,
             submitted_at, issue_at, successful_at, latest_event_at,
-            guideline_code, guideline_title, rejection_reason, issue_description, next_steps, verification
+            guideline_code, guideline_title, rejection_reason, issue_description, next_steps
        FROM reviews
        ${where}
       ORDER BY latest_event_at DESC
@@ -172,11 +170,9 @@ async function getReviews(request: Request, env: Env): Promise<Response> {
 
 async function getTimeline(env: Env): Promise<Response> {
   const result = await env.DB.prepare(
-    `SELECT e.submission_id, r.app_name, r.platform, r.app_version,
-            e.event_type, e.occurred_at
-       FROM review_events AS e
-       JOIN reviews AS r ON r.submission_id = e.submission_id
-      ORDER BY e.occurred_at ASC
+    `SELECT submission_id, app_name, platform, app_version, status, latest_event_at
+       FROM reviews
+      ORDER BY latest_event_at ASC
       LIMIT 1000`,
   ).all<TimelineEventRow>();
 
@@ -187,8 +183,8 @@ async function getTimeline(env: Env): Promise<Response> {
         appName: event.app_name,
         platform: event.platform,
         appVersion: event.app_version,
-        status: event.event_type,
-        occurredAt: event.occurred_at,
+        status: event.status,
+        occurredAt: event.latest_event_at,
       })),
     },
     200,
@@ -199,19 +195,18 @@ async function getTimeline(env: Env): Promise<Response> {
 async function storeReviews(
   db: D1Database,
   reviews: ParsedReviewEmail[],
-): Promise<{ submissions: number; events: number }> {
+): Promise<{ submissions: number }> {
   const statements: D1PreparedStatement[] = [];
 
   for (const review of reviews) {
-    const eventKey = `${review.submissionId}:${review.status}:${review.eventAt}`;
     statements.push(
       db
       .prepare(
         `INSERT INTO reviews (
            submission_id, app_name, platform, organization_id, app_store_id, app_version,
            status, submitted_at, issue_at, successful_at, latest_event_at, submitted_via,
-           guideline_code, guideline_title, rejection_reason, issue_description, next_steps, verification, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+           guideline_code, guideline_title, rejection_reason, issue_description, next_steps, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
          ON CONFLICT(submission_id) DO UPDATE SET
            app_name = excluded.app_name,
            platform = excluded.platform,
@@ -235,11 +230,6 @@ async function storeReviews(
            rejection_reason = COALESCE(reviews.rejection_reason, excluded.rejection_reason),
            issue_description = COALESCE(reviews.issue_description, excluded.issue_description),
            next_steps = COALESCE(reviews.next_steps, excluded.next_steps),
-           verification = CASE
-             WHEN excluded.verification = 'apple-authenticated' OR reviews.verification = 'apple-authenticated'
-             THEN 'apple-authenticated'
-             ELSE 'forwarded-email'
-           END,
            updated_at = CURRENT_TIMESTAMP`,
       )
       .bind(
@@ -260,21 +250,13 @@ async function storeReviews(
         review.rejectionReason,
         review.issueDescription,
         review.nextSteps,
-        review.verification,
       ),
-      db
-        .prepare(
-        `INSERT OR IGNORE INTO review_events (event_key, submission_id, event_type, occurred_at)
-         VALUES (?, ?, ?, ?)`,
-      )
-      .bind(eventKey, review.submissionId, review.status, review.eventAt),
     );
   }
 
   await db.batch(statements);
   return {
     submissions: new Set(reviews.map((review) => review.submissionId)).size,
-    events: reviews.length,
   };
 }
 
@@ -296,7 +278,6 @@ function toPublicReview(row: ReviewRow) {
     rejectionReason: row.rejection_reason,
     issueDescription: row.issue_description,
     nextSteps: row.next_steps,
-    verification: row.verification,
   };
 }
 
