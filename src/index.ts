@@ -61,7 +61,7 @@ export default {
     const headers = new Headers(asset.headers);
     headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.mzstatic.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'",
+      "default-src 'self'; script-src 'self' 'sha256-QGAU6PUlGYjzt0NWbi2AY+wSGznvW/sg4UjZNfv+gj4=' https://www.googletagmanager.com; style-src 'self'; img-src 'self' data: https://*.mzstatic.com https://*.google-analytics.com https://www.googletagmanager.com; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'",
     );
     headers.set("Permissions-Policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=()");
     headers.set("Referrer-Policy", "no-referrer");

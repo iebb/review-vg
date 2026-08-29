@@ -330,7 +330,7 @@ function leaderboardEntries(apps, status, slowest) {
     eventTime(right.event) - eventTime(left.event) ||
     String(left.event.submissionId).localeCompare(String(right.event.submissionId))
   ));
-  return entries.slice(0, 5);
+  return entries.slice(0, 20);
 }
 
 function createLeaderboardEntry(entry, rank) {

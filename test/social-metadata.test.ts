@@ -8,11 +8,15 @@ describe("social sharing metadata", () => {
     const html = await readFile(new URL("public/index.html", projectUrl), "utf8");
 
     expect(html).toContain('property="og:title" content="Review.vg — App review, compared"');
+    expect(html).toContain('<link rel="canonical" href="https://review.vg/"');
     expect(html).not.toContain("in the open");
     expect(html).toContain('property="og:image" content="https://review.vg/og-image.png?v=20260829-compared1"');
+    expect(html).toContain('property="og:image:secure_url" content="https://review.vg/og-image.png?v=20260829-compared1"');
     expect(html).toContain('property="og:image:width" content="1200"');
     expect(html).toContain('property="og:image:height" content="630"');
     expect(html).toContain('name="twitter:card" content="summary_large_image"');
+    expect(html).toContain('name="twitter:site" content="@CyberHono"');
+    expect(html).toContain('name="twitter:creator" content="@CyberHono"');
     expect(html).toContain('name="twitter:image" content="https://review.vg/og-image.png?v=20260829-compared1"');
   });
 
