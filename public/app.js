@@ -82,7 +82,7 @@ function groupApps(events) {
   return [...groups.values()]
     .map((app) => ({
       ...app,
-      appName: app.approvedName || "Unapproved app",
+      appName: app.approvedName || "Unapproved",
       appCategory: app.appCategory || "Uncategorized",
       isApproved: Boolean(app.approvedName),
       events: app.events.sort(compareEvents),
@@ -508,7 +508,7 @@ class SharedTimelineChart {
       const startX = this.x(clippedStart);
       const endX = this.x(clippedEnd);
       const accepted = point.event.status === "success";
-      const outcome = accepted ? "Accepted" : "Failed";
+      const outcome = accepted ? "Accepted" : "Rejected";
       const version = point.event.appVersion ? `, version ${point.event.appVersion}` : "";
       const label = `${lane.appName}, ${lane.platform}. ${outcome}${version}. Submitted ${dateTime(point.startTime)}. Apple replied ${dateTime(point.endTime)}.`;
       const reason = accepted ? "" : publicRejectionReason(point.event.rejectionReason);
@@ -580,7 +580,7 @@ class SharedTimelineChart {
     const heading = element("strong", "timeline-tooltip-title");
     heading.textContent = `${point.appName} · ${point.event.platform}`;
     const timing = element("span", "timeline-tooltip-timing");
-    timing.textContent = `${accepted ? "Accepted" : "Failed"}${point.event.appVersion ? ` · Version ${point.event.appVersion}` : ""}\nSubmitted ${dateTime(point.startTime)}\nApple replied ${dateTime(point.endTime)}`;
+    timing.textContent = `${accepted ? "Accepted" : "Rejected"}${point.event.appVersion ? ` · Version ${point.event.appVersion}` : ""}\nSubmitted ${dateTime(point.startTime)}\nApple replied ${dateTime(point.endTime)}`;
     const content = [heading, timing];
     const reason = accepted ? "" : publicRejectionReason(point.event.rejectionReason);
     if (reason) {
