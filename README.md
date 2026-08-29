@@ -47,7 +47,7 @@ Run checks with `npm run check`.
 - Static assets: `public/`, binding `ASSETS`
 - Custom domain: `review.vg`
 - Email Routing rule: `*@review.vg` → Worker `review-vg`
-- Daily cron: purge raw messages older than seven days and enforce the 1,000-message cap
+- Hourly cron: purge raw messages older than seven days and enforce the 1,000-message cap
 
 Apply production migrations before deploying a schema-dependent Worker:
 

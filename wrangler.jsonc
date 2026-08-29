@@ -8,7 +8,7 @@
   "addresses": ["*@review.vg"],
   "workers_dev": true,
   "triggers": {
-    "crons": ["17 3 * * *"]
+    "crons": ["17 * * * *"]
   },
   "routes": [
     {
