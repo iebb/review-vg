@@ -170,6 +170,9 @@ function createSharedTimeline(apps) {
     group.setAttribute("aria-label", `${app.appName} review timeline`);
     const identity = createAppIdentity(app);
     identity.style.gridRow = `1 / span ${app.platforms.length}`;
+    for (const cell of identity.children) {
+      cell.style.gridRow = `1 / span ${app.platforms.length}`;
+    }
     group.append(identity);
 
     app.platforms.forEach((platform, index) => {
@@ -197,18 +200,20 @@ function createSharedTimeline(apps) {
   }
 
   const axisRow = element("div", "timeline-axis-row");
+  const axisIconSpacer = element("span", "timeline-axis-icon-spacer");
+  axisIconSpacer.setAttribute("aria-hidden", "true");
   const axisSpacer = element("span", "timeline-axis-spacer");
   axisSpacer.setAttribute("aria-hidden", "true");
   const axis = document.createElementNS(SVG_NS, "svg");
   axis.classList.add("timeline-shared-axis");
   axis.setAttribute("role", "img");
   axis.setAttribute("aria-label", "Shared review date axis");
-  axisRow.append(axisSpacer, axis);
+  axisRow.append(axisIconSpacer, axisSpacer, axis);
   body.append(axisRow);
 
   const footer = element("footer", "timeline-board-footer");
   const hint = element("p", "timeline-interaction-hint");
-  hint.textContent = "Hover or focus a bar for details · scroll or pinch to zoom · drag to pan";
+  hint.textContent = "Hover or focus a bar for details · use controls to zoom · drag to pan · swipe to scroll";
   footer.append(hint);
 
   const tooltip = element("div", "timeline-tooltip");
@@ -263,7 +268,8 @@ function createSharedTimeline(apps) {
 
 function createAppIdentity(app) {
   const identity = element("div", "timeline-app-identity");
-  identity.append(createAppIcon(app));
+  const iconCell = element("div", "timeline-app-icon-cell");
+  iconCell.append(createAppIcon(app));
   const nameBlock = element("div", "timeline-name");
   const title = element("h3");
   title.textContent = app.appName;
@@ -273,7 +279,7 @@ function createAppIdentity(app) {
   category.title = app.appCategory;
   meta.append(category);
   nameBlock.append(title, meta);
-  identity.append(nameBlock);
+  identity.append(iconCell, nameBlock);
   return identity;
 }
 
@@ -380,6 +386,7 @@ class SharedTimelineChart {
 
     surface.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
+      if (event.pointerType === "touch") return;
       if (event.target instanceof Element && event.target.closest(".timeline-event")) return;
       this.hideTooltip();
       this.drag = { surface, pointerX: event.clientX, viewStart: this.viewStart };
@@ -512,7 +519,9 @@ class SharedTimelineChart {
       const version = point.event.appVersion ? `, version ${point.event.appVersion}` : "";
       const label = `${lane.appName}, ${lane.platform}. ${outcome}${version}. Submitted ${dateTime(point.startTime)}. Apple replied ${dateTime(point.endTime)}.`;
       const reason = accepted ? "" : publicRejectionReason(point.event.rejectionReason);
-      const accessibleLabel = reason ? `${label} ${reason}` : label;
+      const forwardingSource = publicForwardingSource(point.event.forwardedFrom);
+      const sourceLabel = `${label} Forwarded from ${forwardingSource}.`;
+      const accessibleLabel = reason ? `${sourceLabel} ${reason}` : sourceLabel;
 
       const marker = svgElement("g", `timeline-event ${accepted ? "success" : "issue"}`);
       marker.setAttribute("tabindex", "0");
@@ -580,7 +589,7 @@ class SharedTimelineChart {
     const heading = element("strong", "timeline-tooltip-title");
     heading.textContent = `${point.appName} · ${point.event.platform}`;
     const timing = element("span", "timeline-tooltip-timing");
-    timing.textContent = `${accepted ? "Accepted" : "Rejected"}${point.event.appVersion ? ` · Version ${point.event.appVersion}` : ""}\nSubmitted ${dateTime(point.startTime)}\nApple replied ${dateTime(point.endTime)}`;
+    timing.textContent = `${accepted ? "Accepted" : "Rejected"}${point.event.appVersion ? ` · Version ${point.event.appVersion}` : ""}\nSubmitted ${dateTime(point.startTime)}\nApple replied ${dateTime(point.endTime)}\nForwarded from ${publicForwardingSource(point.event.forwardedFrom)}`;
     const content = [heading, timing];
     const reason = accepted ? "" : publicRejectionReason(point.event.rejectionReason);
     if (reason) {
@@ -743,6 +752,10 @@ function eventTime(event) {
 function publicRejectionReason(value) {
   if (typeof value !== "string") return "";
   return value.replace(/(?:^|\n)\s*Next Steps\b[\s\S]*$/i, "").trim();
+}
+
+function publicForwardingSource(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : "Unknown";
 }
 
 function normalizedPublicName(value) {

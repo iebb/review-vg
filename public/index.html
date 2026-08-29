@@ -6,8 +6,8 @@
     <meta name="description" content="Community-shared App Store review outcomes and review timelines." />
     <meta name="theme-color" content="#f6f3ea" />
     <title>Review.vg — App review, in the open</title>
-    <link rel="stylesheet" href="/styles.css?v=20260829-focus3" />
-    <script src="/app.js?v=20260829-focus3" defer></script>
+    <link rel="stylesheet" href="/styles.css?v=20260829-mobile2" />
+    <script src="/app.js?v=20260829-mobile2" defer></script>
   </head>
   <body>
     <div class="grain" aria-hidden="true"></div>
@@ -22,7 +22,7 @@
     <main>
       <section class="hero shell">
         <div class="hero-copy">
-          <p class="eyebrow"><span class="live-dot"></span> Community review signal</p>
+          <p class="eyebrow"><span class="live-dot"></span> Community signal</p>
           <h1>App review,<br /><em>in the open.</em></h1>
           <p class="hero-lede">
             Real App Store review outcomes, shared by developers. See what passed, what did not,
@@ -38,7 +38,10 @@
               <span class="copy-label">Copy</span>
             </button>
           </div>
-          <p class="email-hint">Forward one email normally, or attach many Apple review emails to a single message.</p>
+          <p class="email-hint">
+            Forward one email normally, or attach many Apple review emails to a single message. Any address at
+            <code>review.vg</code> reaches the same inbox.
+          </p>
         </div>
 
         <div class="hero-art" aria-hidden="true">
@@ -91,8 +94,6 @@
               <h3>Forward or attach</h3>
               <p>
                 Send one unchanged, or attach multiple Apple emails to one message addressed to <code>report@review.vg</code>.
-                For automatic forwarding, add two subject filters: <code>submission is complete</code> and
-                <code>There's an issue with your</code>. Forward both to <code>report@review.vg</code>.
               </p>
             </div>
           </li>
@@ -103,13 +104,41 @@
         </ol>
       </section>
 
+      <section class="auto-forward shell" aria-labelledby="auto-forward-heading">
+        <div>
+          <p class="section-kicker">Automatic forwarding</p>
+          <h2 id="auto-forward-heading">Share every outcome automatically.</h2>
+          <p class="auto-forward-lede">
+            Forward all matching messages to <code>report@review.vg</code>. The rule should require Apple’s sender
+            and either review-result subject phrase.
+          </p>
+        </div>
+        <div class="forward-rule-card">
+          <div class="forward-rule">
+            <span class="forward-rule-label">From</span>
+            <div class="forward-rule-value"><code>no_reply@email.apple.com</code></div>
+          </div>
+          <div class="forward-rule">
+            <span class="forward-rule-label">Subject contains either</span>
+            <div class="forward-rule-value">
+              <code>submission is complete</code>
+              <span class="forward-rule-or">or</span>
+              <code>There's an issue with your</code>
+            </div>
+          </div>
+          <p class="gmail-auto-confirm">
+            <strong>Using Gmail?</strong> The forwarding verification sent to <code>report@review.vg</code> is confirmed automatically.
+          </p>
+        </div>
+      </section>
+
       <section class="privacy shell">
         <span class="privacy-mark" aria-hidden="true">◎</span>
         <div>
           <h2>Built for useful transparency, with restraint.</h2>
           <p>
-            Raw emails, developer names, forwarding addresses, and organization UUIDs are not published.
-            Each result is keyed by its App Store submission ID.
+            Raw emails, developer names, and organization UUIDs are not published. Each result shows the forwarding
+            email address that supplied it and is keyed by its App Store submission ID.
           </p>
         </div>
       </section>

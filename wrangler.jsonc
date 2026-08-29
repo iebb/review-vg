@@ -5,6 +5,7 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-29",
   "compatibility_flags": ["nodejs_compat"],
+  "addresses": ["*@review.vg"],
   "workers_dev": true,
   "routes": [
     {

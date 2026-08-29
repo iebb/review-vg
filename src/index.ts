@@ -18,7 +18,13 @@ interface TimelineEventRow {
   submitted_at: string | null;
   latest_event_at: string;
   rejection_reason: string | null;
+  forwarded_from: string | null;
   has_approved: number;
+}
+
+interface ForwardingSourceEmail {
+  from?: { address?: string };
+  headers: Array<{ key: string; value: string }>;
 }
 
 interface ExistingMetadataRow {
@@ -58,7 +64,7 @@ export default {
   },
 
   async email(message, env): Promise<void> {
-    if (message.to.toLowerCase() !== REPORT_ADDRESS) {
+    if (!isReviewRecipient(message.to)) {
       message.setReject("Unknown review.vg recipient");
       return;
     }
@@ -89,7 +95,11 @@ export default {
       }
 
       const reviewsWithMetadata = await enrichReviewMetadata(env.DB, extracted.reviews);
-      const stored = await storeReviews(env.DB, reviewsWithMetadata);
+      const stored = await storeReviews(
+        env.DB,
+        reviewsWithMetadata,
+        forwardedFromAddress(parsedMime, message.from),
+      );
       console.log(
         JSON.stringify({
           event: "review_email_stored",
@@ -134,7 +144,7 @@ export async function getTimeline(env: Pick<Env, "DB">): Promise<Response> {
                 ELSE NULL
               END AS app_name,
               r.platform, r.app_store_id, r.app_version, r.status, r.submitted_at,
-              r.latest_event_at, r.rejection_reason, eligible.has_approved,
+              r.latest_event_at, r.rejection_reason, r.forwarded_from, eligible.has_approved,
               COALESCE(
                 r.app_icon_url,
                 (
@@ -181,6 +191,7 @@ export async function getTimeline(env: Pick<Env, "DB">): Promise<Response> {
         submittedAt: event.submitted_at,
         occurredAt: event.latest_event_at,
         rejectionReason: event.status === "issue" ? event.rejection_reason : null,
+        forwardedFrom: event.forwarded_from,
       })),
     },
     200,
@@ -251,6 +262,7 @@ async function enrichReviewMetadata(
 async function storeReviews(
   db: D1Database,
   reviews: StoredReview[],
+  forwardedFrom: string | null,
 ): Promise<{ submissions: number }> {
   const statements: D1PreparedStatement[] = [];
 
@@ -262,8 +274,8 @@ async function storeReviews(
            submission_id, app_name, platform, organization_id, app_store_id, app_version,
            status, submitted_at, issue_at, successful_at, latest_event_at, submitted_via,
            guideline_code, guideline_title, rejection_reason, issue_description, next_steps,
-           app_icon_url, app_category, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+           forwarded_from, app_icon_url, app_category, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
          ON CONFLICT(submission_id) DO UPDATE SET
            app_name = excluded.app_name,
            platform = excluded.platform,
@@ -287,6 +299,7 @@ async function storeReviews(
            rejection_reason = COALESCE(reviews.rejection_reason, excluded.rejection_reason),
            issue_description = COALESCE(reviews.issue_description, excluded.issue_description),
            next_steps = COALESCE(reviews.next_steps, excluded.next_steps),
+           forwarded_from = COALESCE(reviews.forwarded_from, excluded.forwarded_from),
            app_icon_url = COALESCE(excluded.app_icon_url, reviews.app_icon_url),
            app_category = COALESCE(excluded.app_category, reviews.app_category),
            updated_at = CURRENT_TIMESTAMP`,
@@ -309,6 +322,7 @@ async function storeReviews(
         review.rejectionReason,
         review.issueDescription,
         review.nextSteps,
+        forwardedFrom,
         review.appIconUrl,
         review.appCategory,
       ),
@@ -319,6 +333,57 @@ async function storeReviews(
   return {
     submissions: new Set(reviews.map((review) => review.submissionId)).size,
   };
+}
+
+export function forwardedFromAddress(
+  email: ForwardingSourceEmail,
+  envelopeFrom: string,
+): string | null {
+  const visibleFrom = normalizedEmailAddress(email.from?.address ?? "");
+  if (visibleFrom && !isServiceSender(visibleFrom)) return visibleFrom;
+
+  const envelopeAddress = normalizedForwardingEnvelope(envelopeFrom);
+  if (envelopeAddress && !isServiceSender(envelopeAddress)) return envelopeAddress;
+
+  for (const header of email.headers) {
+    if (header.key.toLowerCase() !== "x-forwarded-for") continue;
+    const candidates = header.value.match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,}/gi) ?? [];
+    for (const candidate of candidates) {
+      const address = normalizedEmailAddress(candidate);
+      if (address && !isServiceSender(address)) return address;
+    }
+  }
+  return null;
+}
+
+function normalizedForwardingEnvelope(value: string): string | null {
+  const address = normalizedEmailAddress(value);
+  if (!address) return null;
+  const at = address.lastIndexOf("@");
+  const local = address.slice(0, at);
+  const cafMarker = local.indexOf("+caf_=");
+  if (cafMarker > 0) return `${local.slice(0, cafMarker)}${address.slice(at)}`;
+  return address;
+}
+
+function normalizedEmailAddress(value: string): string | null {
+  const match = value.trim().match(/<?([^\s<>@]+@[^\s<>@]+)>?$/);
+  if (!match) return null;
+  const address = match[1].toLowerCase();
+  return address.length <= 254 ? address : null;
+}
+
+function isServiceSender(address: string): boolean {
+  return isReviewRecipient(address) ||
+    address === "no_reply@email.apple.com" ||
+    address === "forwarding-noreply@google.com";
+}
+
+export function isReviewRecipient(value: string): boolean {
+  const address = normalizedEmailAddress(value);
+  if (!address) return false;
+  const at = address.lastIndexOf("@");
+  return at > 0 && address.slice(at + 1) === "review.vg";
 }
 
 function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {

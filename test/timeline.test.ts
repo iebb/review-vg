@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getTimeline } from "../src/index";
+import { forwardedFromAddress, getTimeline, isReviewRecipient } from "../src/index";
 
 interface FakeTimelineRow {
   submission_id: string;
@@ -13,6 +13,7 @@ interface FakeTimelineRow {
   submitted_at: string;
   latest_event_at: string;
   rejection_reason: string | null;
+  forwarded_from: string | null;
   has_approved: number;
 }
 
@@ -47,6 +48,7 @@ describe("public timeline", () => {
       submitted_at: "2026-08-28T00:00:00.000Z",
       latest_event_at: "2026-08-28T01:00:00.000Z",
       rejection_reason: "Guideline 2.1",
+      forwarded_from: "developer@example.com",
       has_approved: 0,
     }]);
 
@@ -57,8 +59,28 @@ describe("public timeline", () => {
       appName: null,
       appStoreId: "1234567890",
       appCategory: null,
+      forwardedFrom: "developer@example.com",
     });
     expect(JSON.stringify(body)).not.toContain("Private pre-release name");
+  });
+
+  it("identifies manual and Gmail automatic forwarding sources", () => {
+    expect(forwardedFromAddress({
+      from: { address: "Developer@Example.com" },
+      headers: [],
+    }, "bounce@example.com")).toBe("developer@example.com");
+
+    expect(forwardedFromAddress({
+      from: { address: "no_reply@email.apple.com" },
+      headers: [],
+    }, "developer+caf_=report=review.vg@gmail.com")).toBe("developer@gmail.com");
+  });
+
+  it("accepts every review.vg local part and rejects other domains", () => {
+    expect(isReviewRecipient("report@review.vg")).toBe(true);
+    expect(isReviewRecipient("anything+review@REVIEW.VG")).toBe(true);
+    expect(isReviewRecipient("report@other.example")).toBe(false);
+    expect(isReviewRecipient("@review.vg")).toBe(false);
   });
 
   it("selects only apps submitted in the last 60 days and uses approved names", async () => {
