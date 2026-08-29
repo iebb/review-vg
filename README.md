@@ -2,7 +2,7 @@
 
 A Cloudflare Worker that serves the review.vg static site, receives App Store Connect review emails at `report@review.vg`, parses their review lifecycle, and stores the public facts in D1. It accepts both ordinary forwards and batches of attached `.eml` / `message/rfc822` emails.
 
-The public site includes one date-scaled, zoomable timeline for every app and operating-system pair. Each unique Submission ID is one rounded duration bar spanning submission to Apple's reply: red for a failed review and green for an accepted review. Separate submissions of the same app version remain separate bars. Rejection reasons appear only when their failed bars are hovered or focused; no separate record feed is published.
+The public site uses one shared, date-scaled timeline with a synchronized axis and one y-series per app/OS. Apps represented on both iOS and macOS are grouped under one app identity with two adjacent platform series. The chart opens on the latest 30 days and can zoom or pan through the complete history. Each unique Submission ID is one rounded duration bar spanning submission to Apple's reply: red for a failed review and green for an accepted review. Separate submissions of the same app version remain separate bars. Rejection reasons appear only when their failed bars are hovered or focused; no separate record feed is published.
 
 When an approval arrives, the Worker uses the public App Store ID in Apple's lookup API to fetch and store the app icon. The site links that icon to the public App Store page. Icon lookup is bounded and fail-soft, so an Apple lookup outage does not discard a valid review result.
 

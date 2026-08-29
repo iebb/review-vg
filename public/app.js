@@ -44,91 +44,138 @@ function renderTimelines(events) {
     return;
   }
 
+  const apps = groupApps(events);
+  timelinesNode.replaceChildren(createSharedTimeline(apps));
+}
+
+function groupApps(events) {
   const groups = new Map();
   for (const event of events) {
-    const appIdentity = event.appStoreId || event.appName;
-    const key = `${appIdentity}\u0000${event.platform}`;
-    const group = groups.get(key) || {
+    const key = String(event.appStoreId || normalizeAppName(event.appName));
+    const app = groups.get(key) || {
       appName: event.appName,
       appStoreId: event.appStoreId,
       appIconUrl: null,
-      platform: event.platform,
+      latestEventAt: 0,
       events: [],
+      platforms: new Map(),
     };
-    if (event.appIconUrl) group.appIconUrl = event.appIconUrl;
-    group.events.push(event);
-    groups.set(key, group);
+    const timestamp = eventTime(event);
+    if (timestamp >= app.latestEventAt) {
+      app.latestEventAt = timestamp;
+      app.appName = event.appName;
+      app.appStoreId = event.appStoreId || app.appStoreId;
+    }
+    if (event.appIconUrl) app.appIconUrl = event.appIconUrl;
+    app.events.push(event);
+    const platform = app.platforms.get(event.platform) || { platform: event.platform, events: [] };
+    platform.events.push(event);
+    app.platforms.set(event.platform, platform);
+    groups.set(key, app);
   }
 
-  const ordered = [...groups.values()]
-    .map((group) => ({
-      ...group,
-      events: group.events.sort(compareEvents),
+  return [...groups.values()]
+    .map((app) => ({
+      ...app,
+      events: app.events.sort(compareEvents),
+      platforms: [...app.platforms.values()]
+        .map((platform) => ({ ...platform, events: platform.events.sort(compareEvents) }))
+        .sort((left, right) => platformRank(left.platform) - platformRank(right.platform) || left.platform.localeCompare(right.platform)),
     }))
-    .sort((left, right) => {
-      const latestDifference = eventTime(right.events.at(-1)) - eventTime(left.events.at(-1));
-      return latestDifference || left.appName.localeCompare(right.appName) || left.platform.localeCompare(right.platform);
-    });
-
-  timelinesNode.replaceChildren(...ordered.map(createTimelineRow));
+    .sort((left, right) => right.latestEventAt - left.latestEventAt || left.appName.localeCompare(right.appName));
 }
 
-function createTimelineRow(group) {
-  const row = element("article", "timeline-row");
-  const header = element("header", "timeline-row-header");
-  const identity = element("div", "timeline-identity");
-  identity.append(createAppIcon(group));
-
-  const nameBlock = element("div", "timeline-name");
-  const title = element("h3");
-  title.textContent = group.appName;
-  const meta = element("div", "timeline-meta");
-  const platform = element("span", "platform-pill");
-  platform.textContent = group.platform;
-  const count = element("span");
-  count.textContent = `${number(group.events.length)} ${group.events.length === 1 ? "submission" : "submissions"}`;
-  meta.append(platform, count);
-  nameBlock.append(title, meta);
-  identity.append(nameBlock);
+function createSharedTimeline(apps) {
+  const board = element("article", "timeline-board");
+  const toolbar = element("header", "timeline-board-toolbar");
+  const summary = element("div", "timeline-board-summary");
+  const summaryTitle = element("strong");
+  summaryTitle.textContent = "All apps";
+  const totalSubmissions = apps.reduce((total, app) => total + app.events.length, 0);
+  const summaryCopy = element("span");
+  summaryCopy.textContent = `${number(apps.length)} ${apps.length === 1 ? "app" : "apps"} · ${number(totalSubmissions)} submissions`;
+  summary.append(summaryTitle, summaryCopy);
 
   const controls = element("div", "timeline-controls");
   controls.setAttribute("role", "group");
-  controls.setAttribute("aria-label", `Zoom controls for ${group.appName} on ${group.platform}`);
+  controls.setAttribute("aria-label", "Shared timeline zoom controls");
   const zoomOut = controlButton("−", "Zoom out");
-  zoomOut.dataset.action = "out";
-  const zoomLevel = element("span", "zoom-level");
-  zoomLevel.textContent = "1×";
-  zoomLevel.setAttribute("aria-live", "polite");
+  const rangeLabel = element("span", "zoom-level");
+  rangeLabel.textContent = "30 days";
+  rangeLabel.setAttribute("aria-live", "polite");
   const zoomIn = controlButton("+", "Zoom in");
-  zoomIn.dataset.action = "in";
-  const reset = controlButton("Reset", "Reset timeline zoom");
-  reset.dataset.action = "reset";
+  const reset = controlButton("Latest", "Show the latest 30 days");
   reset.classList.add("reset-button");
-  controls.append(zoomOut, zoomLevel, zoomIn, reset);
-  header.append(identity, controls);
+  controls.append(zoomOut, rangeLabel, zoomIn, reset);
+  toolbar.append(summary, controls);
 
-  const chartWrap = element("div", "timeline-chart-wrap");
-  const svg = document.createElementNS(SVG_NS, "svg");
-  svg.classList.add("timeline-chart");
-  svg.setAttribute("role", "group");
-  svg.setAttribute("tabindex", "0");
-  svg.setAttribute("aria-label", `${group.appName} ${group.platform} review durations by date`);
+  const body = element("div", "timeline-board-body");
+  const lanes = [];
+  for (const app of apps) {
+    const group = element("section", "timeline-app-group");
+    group.setAttribute("aria-label", `${app.appName} review timeline`);
+    const identity = createAppIdentity(app);
+    identity.style.gridRow = `1 / span ${app.platforms.length}`;
+    group.append(identity);
+
+    app.platforms.forEach((platform, index) => {
+      const row = index + 1;
+      const platformLabel = element("span", "timeline-platform-label");
+      platformLabel.textContent = platform.platform;
+      platformLabel.style.gridRow = String(row);
+      const svg = document.createElementNS(SVG_NS, "svg");
+      svg.classList.add("timeline-lane");
+      svg.style.gridRow = String(row);
+      svg.setAttribute("role", "group");
+      svg.setAttribute("tabindex", "0");
+      svg.setAttribute("aria-label", `${app.appName} ${platform.platform} review durations`);
+      group.append(platformLabel, svg);
+      lanes.push({ svg, appName: app.appName, platform: platform.platform, events: platform.events });
+    });
+    body.append(group);
+  }
+
+  const axisRow = element("div", "timeline-axis-row");
+  const axisSpacer = element("span", "timeline-axis-spacer");
+  axisSpacer.setAttribute("aria-hidden", "true");
+  const axis = document.createElementNS(SVG_NS, "svg");
+  axis.classList.add("timeline-shared-axis");
+  axis.setAttribute("role", "img");
+  axis.setAttribute("tabindex", "0");
+  axis.setAttribute("aria-label", "Shared review date axis");
+  axisRow.append(axisSpacer, axis);
+  body.append(axisRow);
+
+  const footer = element("footer", "timeline-board-footer");
+  const hint = element("p", "timeline-interaction-hint");
+  hint.textContent = "Hover or focus a bar for details · scroll or pinch to zoom · drag to pan";
+  footer.append(hint);
+
   const tooltip = element("div", "timeline-tooltip");
   tooltip.setAttribute("role", "tooltip");
   tooltip.setAttribute("aria-hidden", "true");
-  const hint = element("p", "timeline-interaction-hint");
-  hint.textContent = "Hover or focus a bar for details · scroll or pinch to zoom · drag to pan";
-  chartWrap.append(svg, tooltip, hint);
+  board.append(toolbar, body, footer, tooltip);
 
-  row.append(header, chartWrap);
-
-  new TimelineChart(svg, tooltip, group.events, {
+  new SharedTimelineChart(axis, lanes, tooltip, {
     zoomIn,
     zoomOut,
     reset,
-    zoomLevel,
+    rangeLabel,
   });
-  return row;
+  return board;
+}
+
+function createAppIdentity(app) {
+  const identity = element("div", "timeline-app-identity");
+  identity.append(createAppIcon(app));
+  const nameBlock = element("div", "timeline-name");
+  const title = element("h3");
+  title.textContent = app.appName;
+  const meta = element("span", "timeline-app-count");
+  meta.textContent = `${number(app.events.length)} ${app.events.length === 1 ? "submission" : "submissions"}`;
+  nameBlock.append(title, meta);
+  identity.append(nameBlock);
+  return identity;
 }
 
 function createAppIcon(group) {
@@ -156,39 +203,35 @@ function createAppIcon(group) {
   return link;
 }
 
-class TimelineChart {
-  constructor(svg, tooltip, events, controls) {
-    this.svg = svg;
+class SharedTimelineChart {
+  constructor(axis, lanes, tooltip, controls) {
+    this.axis = axis;
+    this.lanes = lanes.map((lane) => {
+      const points = lane.events
+        .map((event) => timelinePoint(event))
+        .filter((point) => Number.isFinite(point.startTime) && Number.isFinite(point.endTime))
+        .sort((left, right) => (
+          (right.endTime - right.startTime) - (left.endTime - left.startTime) ||
+          left.startTime - right.startTime ||
+          left.event.submissionId.localeCompare(right.event.submissionId)
+        ));
+      const trackCount = assignPointTracks(points);
+      return { ...lane, points, trackCount };
+    });
     this.tooltip = tooltip;
     this.controls = controls;
-    this.points = events
-      .map((event) => {
-        const endTime = Date.parse(event?.occurredAt);
-        const submittedTime = Date.parse(event?.submittedAt);
-        const startTime = Number.isFinite(submittedTime) && submittedTime <= endTime
-          ? submittedTime
-          : endTime;
-        return { event, startTime, endTime, slot: 0 };
-      })
-      .filter((point) => Number.isFinite(point.startTime) && Number.isFinite(point.endTime))
-      .sort((left, right) => (
-        left.startTime - right.startTime ||
-        left.endTime - right.endTime ||
-        left.event.submissionId.localeCompare(right.event.submissionId)
-      ));
-    this.zoom = 1;
-    this.maximumZoom = 256;
+    this.points = this.lanes.flatMap((lane) => lane.points);
+    this.surfaces = [axis, ...this.lanes.map((lane) => lane.svg)];
     this.viewStart = 0;
     this.drag = null;
     this.width = 0;
-    this.slotCount = 1;
     this.setDomain();
     this.bindControls();
     this.bindGestures();
 
     if ("ResizeObserver" in window) {
       this.resizeObserver = new ResizeObserver(() => this.render());
-      this.resizeObserver.observe(svg.parentElement);
+      this.resizeObserver.observe(axis.parentElement);
     } else {
       window.addEventListener("resize", () => this.render());
     }
@@ -196,24 +239,21 @@ class TimelineChart {
   }
 
   setDomain() {
-    const minimum = this.points.length > 0
+    const now = Date.now();
+    const observedMinimum = this.points.length > 0
       ? Math.min(...this.points.map((point) => point.startTime))
-      : Date.now();
-    const maximum = this.points.length > 0
+      : now;
+    const observedMaximum = this.points.length > 0
       ? Math.max(...this.points.map((point) => point.endTime))
-      : minimum;
-    const observedSpan = maximum - minimum;
-    if (observedSpan < 2 * DAY) {
-      const middle = (minimum + maximum) / 2;
-      this.domainStart = middle - DAY;
-      this.domainEnd = middle + DAY;
-    } else {
-      const padding = observedSpan * 0.08;
-      this.domainStart = minimum - padding;
-      this.domainEnd = maximum + padding;
-    }
+      : now;
+    this.domainEnd = Math.max(now, observedMaximum);
+    this.domainStart = Math.min(observedMinimum, this.domainEnd - 30 * DAY);
     this.domainSpan = this.domainEnd - this.domainStart;
-    this.viewStart = this.domainStart;
+    this.defaultSpan = Math.min(30 * DAY, this.domainSpan);
+    this.defaultZoom = this.domainSpan / this.defaultSpan;
+    this.maximumZoom = Math.max(256, this.defaultZoom * 32);
+    this.zoom = this.defaultZoom;
+    this.viewStart = this.domainEnd - this.defaultSpan;
   }
 
   bindControls() {
@@ -223,29 +263,33 @@ class TimelineChart {
   }
 
   bindGestures() {
-    this.svg.addEventListener("wheel", (event) => {
+    for (const surface of this.surfaces) this.bindGestureSurface(surface);
+  }
+
+  bindGestureSurface(surface) {
+    surface.addEventListener("wheel", (event) => {
       event.preventDefault();
       if (Math.abs(event.deltaX) > Math.abs(event.deltaY) && !event.ctrlKey) {
         this.panByPixels(event.deltaX);
         return;
       }
-      const bounds = this.svg.getBoundingClientRect();
+      const bounds = surface.getBoundingClientRect();
       const svgX = bounds.width > 0 ? ((event.clientX - bounds.left) / bounds.width) * this.width : this.width / 2;
       const ratio = clamp((svgX - this.marginLeft) / this.plotWidth(), 0, 1);
       this.zoomAt(Math.exp(-event.deltaY * 0.002), ratio);
     }, { passive: false });
 
-    this.svg.addEventListener("pointerdown", (event) => {
+    surface.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
       if (event.target instanceof Element && event.target.closest(".timeline-event")) return;
       this.hideTooltip();
-      this.drag = { pointerX: event.clientX, viewStart: this.viewStart };
-      this.svg.setPointerCapture(event.pointerId);
-      this.svg.classList.add("is-dragging");
+      this.drag = { surface, pointerX: event.clientX, viewStart: this.viewStart };
+      surface.setPointerCapture(event.pointerId);
+      surface.classList.add("is-dragging");
     });
-    this.svg.addEventListener("pointermove", (event) => {
-      if (!this.drag) return;
-      const bounds = this.svg.getBoundingClientRect();
+    surface.addEventListener("pointermove", (event) => {
+      if (!this.drag || this.drag.surface !== surface) return;
+      const bounds = surface.getBoundingClientRect();
       const cssPlotWidth = this.plotWidth() * (bounds.width / this.width);
       if (cssPlotWidth <= 0) return;
       const delta = event.clientX - this.drag.pointerX;
@@ -255,15 +299,15 @@ class TimelineChart {
       this.render();
     });
     const stopDragging = (event) => {
-      if (!this.drag) return;
+      if (!this.drag || this.drag.surface !== surface) return;
       this.drag = null;
-      this.svg.classList.remove("is-dragging");
-      if (this.svg.hasPointerCapture(event.pointerId)) this.svg.releasePointerCapture(event.pointerId);
+      surface.classList.remove("is-dragging");
+      if (surface.hasPointerCapture(event.pointerId)) surface.releasePointerCapture(event.pointerId);
     };
-    this.svg.addEventListener("pointerup", stopDragging);
-    this.svg.addEventListener("pointercancel", stopDragging);
+    surface.addEventListener("pointerup", stopDragging);
+    surface.addEventListener("pointercancel", stopDragging);
 
-    this.svg.addEventListener("keydown", (event) => {
+    surface.addEventListener("keydown", (event) => {
       if (event.key === "+" || event.key === "=") {
         event.preventDefault();
         this.zoomAt(1.7, 0.5);
@@ -303,8 +347,8 @@ class TimelineChart {
   }
 
   reset() {
-    this.zoom = 1;
-    this.viewStart = this.domainStart;
+    this.zoom = this.defaultZoom;
+    this.viewStart = this.domainEnd - this.defaultSpan;
     this.render();
   }
 
@@ -320,67 +364,54 @@ class TimelineChart {
     return Math.max(1, this.width - this.marginLeft - this.marginRight);
   }
 
-  assignSlots() {
-    const lastEndBySlot = [];
-    const minimumGap = (8 / this.plotWidth()) * this.domainSpan;
-    for (const point of this.points) {
-      let slot = lastEndBySlot.findIndex((lastEnd) => point.startTime - lastEnd >= minimumGap);
-      if (slot === -1) slot = lastEndBySlot.length;
-      lastEndBySlot[slot] = point.endTime;
-      point.slot = slot;
-    }
-    this.slotCount = Math.max(1, lastEndBySlot.length);
-  }
-
   render() {
     this.hideTooltip();
-    const measuredWidth = Math.floor(this.svg.clientWidth || this.svg.parentElement?.clientWidth || 700);
+    const measuredWidth = Math.floor(this.axis.clientWidth || this.axis.parentElement?.clientWidth || 700);
     this.width = Math.max(300, measuredWidth);
-    this.marginLeft = this.width < 500 ? 22 : 34;
-    this.marginRight = this.width < 500 ? 18 : 28;
-    this.assignSlots();
-
-    const markerTop = 18;
-    const markerStep = 28;
-    const markerHeight = 20;
-    const axisY = markerTop + this.slotCount * markerStep + 12;
-    const height = axisY + 42;
-    this.svg.setAttribute("viewBox", `0 0 ${this.width} ${height}`);
-    this.svg.style.height = `${height}px`;
-    this.svg.replaceChildren();
+    this.marginLeft = this.width < 500 ? 8 : 14;
+    this.marginRight = this.width < 500 ? 8 : 14;
 
     const viewEnd = this.viewStart + this.viewSpan();
     const ticks = timeTicks(this.viewStart, viewEnd, this.width < 520 ? 4 : 7);
+    for (const lane of this.lanes) this.renderLane(lane, ticks, viewEnd);
+    this.renderAxis(ticks);
+
+    this.controls.rangeLabel.textContent = formatRange(this.viewSpan());
+    this.controls.zoomOut.disabled = this.zoom <= 1.001;
+    this.controls.zoomIn.disabled = this.zoom >= this.maximumZoom - 0.001;
+  }
+
+  renderLane(lane, ticks, viewEnd) {
+    const height = 46;
+    lane.svg.setAttribute("viewBox", `0 0 ${this.width} ${height}`);
+    lane.svg.style.height = `${height}px`;
+    lane.svg.replaceChildren();
     for (const tick of ticks) {
       const x = this.x(tick);
       const gridLine = svgElement("line", "timeline-grid-line");
-      setAttributes(gridLine, { x1: x, x2: x, y1: 8, y2: axisY });
-      const label = svgElement("text", "timeline-axis-label");
-      setAttributes(label, { x, y: axisY + 25, "text-anchor": "middle" });
-      label.textContent = formatAxisDate(tick, this.viewSpan());
-      this.svg.append(gridLine, label);
+      setAttributes(gridLine, { x1: x, x2: x, y1: 0, y2: height });
+      lane.svg.append(gridLine);
     }
 
-    const axis = svgElement("line", "timeline-axis-line");
-    setAttributes(axis, {
+    const centerLine = svgElement("line", "timeline-lane-line");
+    setAttributes(centerLine, {
       x1: this.marginLeft,
       x2: this.width - this.marginRight,
-      y1: axisY,
-      y2: axisY,
+      y1: height / 2,
+      y2: height / 2,
     });
-    this.svg.append(axis);
+    lane.svg.append(centerLine);
 
-    for (const point of this.points) {
+    for (const point of lane.points) {
       if (point.endTime < this.viewStart || point.startTime > viewEnd) continue;
       const clippedStart = Math.max(point.startTime, this.viewStart);
       const clippedEnd = Math.min(point.endTime, viewEnd);
       const startX = this.x(clippedStart);
       const endX = this.x(clippedEnd);
-      const y = markerTop + point.slot * markerStep;
       const accepted = point.event.status === "success";
       const outcome = accepted ? "Accepted" : "Failed";
       const version = point.event.appVersion ? `, version ${point.event.appVersion}` : "";
-      const label = `${outcome}${version}. Submitted ${dateTime(point.startTime)}. Apple replied ${dateTime(point.endTime)}.`;
+      const label = `${lane.appName}, ${lane.platform}. ${outcome}${version}. Submitted ${dateTime(point.startTime)}. Apple replied ${dateTime(point.endTime)}.`;
       const reason = accepted ? "" : publicRejectionReason(point.event.rejectionReason);
       const accessibleLabel = reason ? `${label} ${reason}` : label;
 
@@ -392,7 +423,8 @@ class TimelineChart {
       const width = Math.max(2, endX - startX);
       const rightEdge = this.width - this.marginRight;
       const blockX = Math.min(startX, rightEdge - width);
-      setAttributes(block, { x: blockX, y, width, height: markerHeight, rx: 7, ry: 7 });
+      const track = trackLayout(lane.trackCount, point.track);
+      setAttributes(block, { x: blockX, y: track.y, width, height: track.height, rx: 6, ry: 6 });
       marker.append(block);
       marker.addEventListener("pointerenter", (event) => this.showTooltip(point, event.clientX, event.clientY));
       marker.addEventListener("pointermove", (event) => this.positionTooltip(event.clientX, event.clientY));
@@ -410,13 +442,30 @@ class TimelineChart {
         const bounds = block.getBoundingClientRect();
         this.showTooltip(point, bounds.left + bounds.width / 2, bounds.top);
       });
-      this.svg.append(marker);
+      lane.svg.append(marker);
     }
+  }
 
-    const roundedZoom = this.zoom >= 10 ? Math.round(this.zoom) : Math.round(this.zoom * 10) / 10;
-    this.controls.zoomLevel.textContent = `${roundedZoom}×`;
-    this.controls.zoomOut.disabled = this.zoom <= 1.001;
-    this.controls.zoomIn.disabled = this.zoom >= this.maximumZoom - 0.001;
+  renderAxis(ticks) {
+    const height = 38;
+    this.axis.setAttribute("viewBox", `0 0 ${this.width} ${height}`);
+    this.axis.style.height = `${height}px`;
+    this.axis.replaceChildren();
+    const line = svgElement("line", "timeline-axis-line");
+    setAttributes(line, {
+      x1: this.marginLeft,
+      x2: this.width - this.marginRight,
+      y1: 1,
+      y2: 1,
+    });
+    this.axis.append(line);
+    for (const tick of ticks) {
+      const x = this.x(tick);
+      const label = svgElement("text", "timeline-axis-label");
+      setAttributes(label, { x, y: 24, "text-anchor": "middle" });
+      label.textContent = formatAxisDate(tick, this.viewSpan());
+      this.axis.append(label);
+    }
   }
 
   x(timestamp) {
@@ -426,9 +475,9 @@ class TimelineChart {
   showTooltip(point, clientX, clientY) {
     const accepted = point.event.status === "success";
     const heading = element("strong", "timeline-tooltip-title");
-    heading.textContent = `${accepted ? "Accepted" : "Failed"}${point.event.appVersion ? ` · Version ${point.event.appVersion}` : ""}`;
+    heading.textContent = `${point.event.appName} · ${point.event.platform}`;
     const timing = element("span", "timeline-tooltip-timing");
-    timing.textContent = `Submitted ${dateTime(point.startTime)}\nApple replied ${dateTime(point.endTime)}`;
+    timing.textContent = `${accepted ? "Accepted" : "Failed"}${point.event.appVersion ? ` · Version ${point.event.appVersion}` : ""}\nSubmitted ${dateTime(point.startTime)}\nApple replied ${dateTime(point.endTime)}`;
     const content = [heading, timing];
     const reason = accepted ? "" : publicRejectionReason(point.event.rejectionReason);
     if (reason) {
@@ -459,6 +508,43 @@ class TimelineChart {
     this.tooltip.classList.remove("is-visible");
     this.tooltip.setAttribute("aria-hidden", "true");
   }
+}
+
+function timelinePoint(event) {
+  const endTime = Date.parse(event?.occurredAt);
+  const submittedTime = Date.parse(event?.submittedAt);
+  const startTime = Number.isFinite(submittedTime) && submittedTime <= endTime
+    ? submittedTime
+    : endTime;
+  return { event, startTime, endTime };
+}
+
+function assignPointTracks(points) {
+  const trackEnds = [];
+  const ordered = [...points].sort((left, right) => (
+    left.startTime - right.startTime ||
+    left.endTime - right.endTime ||
+    left.event.submissionId.localeCompare(right.event.submissionId)
+  ));
+  for (const point of ordered) {
+    let track = trackEnds.findIndex((endTime) => point.startTime >= endTime);
+    if (track === -1) track = trackEnds.length;
+    trackEnds[track] = point.endTime;
+    point.track = track;
+  }
+  return Math.max(1, trackEnds.length);
+}
+
+function trackLayout(trackCount, trackIndex) {
+  const available = 36;
+  const gap = trackCount > 6 ? 1 : 2;
+  const maximumHeight = trackCount === 1 ? 20 : 12;
+  const height = Math.max(2, Math.min(maximumHeight, (available - gap * (trackCount - 1)) / trackCount));
+  const used = height * trackCount + gap * (trackCount - 1);
+  return {
+    height,
+    y: (46 - used) / 2 + trackIndex * (height + gap),
+  };
 }
 
 function timeTicks(start, end, requestedCount) {
@@ -504,6 +590,23 @@ function formatAxisDate(timestamp, span) {
   return new Intl.DateTimeFormat(undefined, options).format(new Date(timestamp));
 }
 
+function formatRange(span) {
+  if (span < 2 * DAY) {
+    const hours = Math.max(1, Math.round(span / (60 * 60 * 1000)));
+    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  if (span < 60 * DAY) {
+    const days = Math.max(2, Math.round(span / DAY));
+    return `${days} days`;
+  }
+  if (span < 2 * 365 * DAY) {
+    const months = Math.max(2, Math.round(span / (30 * DAY)));
+    return `${months} months`;
+  }
+  const years = Math.max(2, Math.round(span / (365 * DAY)));
+  return `${years} years`;
+}
+
 function dateTime(value) {
   const timestamp = typeof value === "number" ? value : Date.parse(value);
   if (!Number.isFinite(timestamp)) return "Unknown date";
@@ -529,6 +632,17 @@ function eventTime(event) {
 function publicRejectionReason(value) {
   if (typeof value !== "string") return "";
   return value.replace(/(?:^|\n)\s*Next Steps\b[\s\S]*$/i, "").trim();
+}
+
+function normalizeAppName(value) {
+  return String(value || "").trim().toLocaleLowerCase();
+}
+
+function platformRank(platform) {
+  const normalized = String(platform || "").toLocaleLowerCase();
+  if (normalized === "ios") return 0;
+  if (normalized === "macos") return 1;
+  return 2;
 }
 
 function appStoreUrl(appStoreId) {

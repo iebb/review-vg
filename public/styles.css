@@ -95,29 +95,37 @@ a { color: inherit; }
 .timeline-legend i { width: 18px; height: 10px; border-radius: 999px; }
 .timeline-legend i.issue { background: var(--coral); }
 .timeline-legend i.success { background: var(--green); }
-.timeline-list { display: grid; gap: 18px; }
-.timeline-row { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); box-shadow: 0 12px 36px rgba(42, 48, 43, .045); }
-.timeline-row-header { display: flex; align-items: center; justify-content: space-between; gap: 28px; padding: 24px 26px 18px; }
-.timeline-identity { min-width: 0; display: flex; align-items: center; gap: 15px; }
+.timeline-list { display: block; }
+.timeline-board { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); box-shadow: 0 15px 42px rgba(42, 48, 43, .07); }
+.timeline-board-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 17px 19px; border-bottom: 1px solid var(--line); }
+.timeline-board-summary { min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+.timeline-board-summary strong { font-size: 15px; letter-spacing: -.025em; }
+.timeline-board-summary span { color: var(--muted); font-size: 10px; }
+.timeline-board-body { --app-column: 220px; --platform-column: 72px; overflow-x: auto; overscroll-behavior-inline: contain; }
+.timeline-app-group, .timeline-axis-row { min-width: 760px; display: grid; grid-template-columns: var(--app-column) var(--platform-column) minmax(420px, 1fr); }
+.timeline-app-group { grid-auto-rows: 46px; border-bottom: 1px solid var(--line); }
+.timeline-app-group:last-of-type { border-bottom: 0; }
+.timeline-app-identity { min-width: 0; grid-column: 1; display: flex; align-items: center; gap: 11px; padding: 3px 14px; background: rgba(246, 243, 234, .38); }
 .app-icon-link { flex: 0 0 auto; display: block; border-radius: 15px; }
 .app-icon-link:focus-visible { outline: 3px solid rgba(23, 107, 82, .28); outline-offset: 3px; }
-.app-icon { width: 56px; height: 56px; display: block; flex: 0 0 auto; border-radius: 14px; object-fit: cover; background: var(--paper-deep); box-shadow: inset 0 0 0 1px rgba(23, 32, 30, .08), 0 7px 20px rgba(23, 32, 30, .09); }
-.app-icon-fallback { display: grid; place-items: center; color: white; background: var(--ink); font: 520 24px/1 "Geologica", sans-serif; }
+.app-icon { width: 38px; height: 38px; display: block; flex: 0 0 auto; border-radius: 10px; object-fit: cover; background: var(--paper-deep); box-shadow: inset 0 0 0 1px rgba(23, 32, 30, .08), 0 5px 14px rgba(23, 32, 30, .08); }
+.app-icon-fallback { display: grid; place-items: center; color: white; background: var(--ink); font: 520 17px/1 "Geologica", sans-serif; }
 .timeline-name { min-width: 0; }
-.timeline-name h3 { overflow: hidden; margin: 0 0 7px; font-size: 21px; letter-spacing: -.035em; text-overflow: ellipsis; white-space: nowrap; }
-.timeline-meta { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 11px; }
-.platform-pill { padding: 4px 8px; color: var(--ink); border: 1px solid var(--line); border-radius: 999px; font-weight: 750; }
+.timeline-name h3 { overflow: hidden; margin: 0 0 3px; font-size: 14px; letter-spacing: -.025em; text-overflow: ellipsis; white-space: nowrap; }
+.timeline-app-count { display: block; color: var(--muted); font-size: 9px; white-space: nowrap; }
+.timeline-platform-label { grid-column: 2; display: flex; align-items: center; justify-content: center; color: var(--muted); border-left: 1px solid var(--line); border-right: 1px solid var(--line); border-top: 1px solid rgba(23, 32, 30, .06); background: rgba(246, 243, 234, .22); font-size: 10px; font-weight: 750; }
 .timeline-controls { display: inline-flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
 .timeline-control { min-width: 32px; height: 30px; padding: 0 9px; border: 0; border-radius: 8px; color: var(--ink); background: transparent; font-size: 15px; font-weight: 800; cursor: pointer; }
 .timeline-control:hover:not(:disabled), .timeline-control:focus-visible { color: white; background: var(--ink); outline: none; }
 .timeline-control:disabled { cursor: default; opacity: .32; }
 .timeline-control.reset-button { margin-left: 3px; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
-.zoom-level { min-width: 44px; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 750; text-align: center; }
-.timeline-chart-wrap { position: relative; margin: 0 26px 24px; padding: 10px 16px 8px; overflow: hidden; border: 1px solid rgba(23, 32, 30, .09); border-radius: 15px; background: var(--paper); }
-.timeline-chart { width: 100%; min-height: 105px; display: block; overflow: visible; cursor: grab; touch-action: none; user-select: none; }
-.timeline-chart.is-dragging { cursor: grabbing; }
-.timeline-chart:focus-visible { outline: 3px solid rgba(23, 107, 82, .2); outline-offset: -2px; border-radius: 8px; }
+.zoom-level { min-width: 62px; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; font-weight: 750; text-align: center; }
+.timeline-lane { width: 100%; grid-column: 3; align-self: center; display: block; overflow: visible; cursor: grab; touch-action: none; user-select: none; }
+.timeline-shared-axis { width: 100%; grid-column: 3; display: block; overflow: visible; cursor: grab; touch-action: none; user-select: none; }
+.timeline-lane.is-dragging, .timeline-shared-axis.is-dragging { cursor: grabbing; }
+.timeline-lane:focus-visible, .timeline-shared-axis:focus-visible { outline: 3px solid rgba(23, 107, 82, .18); outline-offset: -3px; }
 .timeline-grid-line { stroke: rgba(23, 32, 30, .08); stroke-width: 1; }
+.timeline-lane-line { stroke: rgba(23, 32, 30, .12); stroke-width: 1; }
 .timeline-axis-line { stroke: rgba(23, 32, 30, .3); stroke-width: 1.2; }
 .timeline-axis-label { fill: var(--muted); font-family: "Geologica", ui-sans-serif, sans-serif; font-size: 10px; font-weight: 600; }
 .timeline-event { cursor: pointer; }
@@ -125,7 +133,10 @@ a { color: inherit; }
 .timeline-event.issue .timeline-event-block { fill: var(--coral); }
 .timeline-event.success .timeline-event-block { fill: var(--green); }
 .timeline-event:hover .timeline-event-block, .timeline-event:focus .timeline-event-block { filter: brightness(1.08) saturate(1.15); stroke: var(--ink); stroke-width: 2; outline: none; }
-.timeline-interaction-hint { margin: 1px 0 0; color: var(--muted); font-size: 10px; text-align: right; }
+.timeline-axis-row { min-height: 38px; }
+.timeline-axis-spacer { grid-column: 1 / span 2; border-right: 1px solid var(--line); background: rgba(246, 243, 234, .38); }
+.timeline-board-footer { padding: 9px 19px 11px; border-top: 1px solid var(--line); }
+.timeline-interaction-hint { margin: 0; color: var(--muted); font-size: 10px; text-align: right; }
 .timeline-tooltip { width: max-content; max-width: min(420px, calc(100vw - 20px)); max-height: calc(100vh - 20px); position: fixed; left: 0; top: 0; z-index: 40; display: grid; gap: 9px; padding: 13px 15px 15px; overflow: hidden; visibility: hidden; color: white; border: 1px solid rgba(255, 255, 255, .14); border-radius: 12px; background: rgba(23, 32, 30, .96); box-shadow: 0 18px 45px rgba(23, 32, 30, .24); opacity: 0; pointer-events: none; transform: translateY(4px); transition: opacity 120ms ease, transform 120ms ease, visibility 120ms; }
 .timeline-tooltip.is-visible { visibility: visible; opacity: 1; transform: translateY(0); }
 .timeline-tooltip-title { font-size: 12px; letter-spacing: -.01em; }
@@ -180,9 +191,12 @@ code { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, mono
   .signal-card { width: 260px; }
   .timeline-section { padding-block: 80px; }
   .timeline-header { align-items: start; flex-direction: column; gap: 24px; }
-  .timeline-row-header { align-items: start; flex-direction: column; padding: 20px 18px 14px; }
-  .timeline-controls { align-self: stretch; justify-content: center; }
-  .timeline-chart-wrap { margin: 0 12px 18px; padding-inline: 8px; }
+  .timeline-board-toolbar { align-items: stretch; flex-direction: column; gap: 12px; }
+  .timeline-controls { justify-content: center; }
+  .timeline-board-body { --app-column: 150px; --platform-column: 58px; }
+  .timeline-app-group, .timeline-axis-row { min-width: 680px; }
+  .timeline-app-identity { padding-inline: 9px; }
+  .timeline-name h3 { font-size: 12px; }
   .timeline-interaction-hint { text-align: center; }
   .how { padding-block: 80px; }
   .privacy { grid-template-columns: 1fr; padding: 30px; }
