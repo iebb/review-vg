@@ -5,6 +5,9 @@ import type { ParsedReviewEmail } from "./parser";
 
 const REPORT_ADDRESS = "report@review.vg";
 const MAX_EMAIL_BYTES = 20 * 1024 * 1024;
+const RAW_EMAIL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const RAW_EMAIL_MAX_MESSAGES = 1000;
+const RAW_EMAIL_CHUNK_BYTES = 1_500_000;
 
 interface TimelineEventRow {
   submission_id: string;
@@ -17,13 +20,21 @@ interface TimelineEventRow {
   status: "issue" | "success";
   submitted_at: string | null;
   latest_event_at: string;
-  rejection_reason: string | null;
+  guideline_code: string | null;
+  guideline_title: string | null;
   has_approved: number;
 }
 
 interface ForwardingSourceEmail {
   from?: { address?: string };
   headers: Array<{ key: string; value: string }>;
+}
+
+interface RawEmailMetadata {
+  envelopeFrom: string;
+  envelopeTo: string;
+  messageId: string | null;
+  subject: string | null;
 }
 
 interface ExistingMetadataRow {
@@ -74,6 +85,12 @@ export default {
 
     try {
       const raw = await new Response(message.raw).arrayBuffer();
+      await archiveIncomingEmail(env.DB, raw, {
+        envelopeFrom: message.from,
+        envelopeTo: message.to,
+        messageId: message.headers.get("message-id"),
+        subject: message.headers.get("subject"),
+      });
       const parsedMime = await parseInboundEmail(raw);
       const gmailConfirmation = gmailForwardingConfirmationUrl(parsedMime, message.from);
       if (gmailConfirmation) {
@@ -117,7 +134,91 @@ export default {
       throw error;
     }
   },
+
+  async scheduled(_controller, env): Promise<void> {
+    await purgeRawEmails(env.DB);
+  },
 } satisfies ExportedHandler<Env>;
+
+export async function archiveIncomingEmail(
+  db: D1Database,
+  raw: ArrayBuffer,
+  metadata: RawEmailMetadata,
+): Promise<string> {
+  const receivedAt = new Date();
+  const expiresAt = new Date(receivedAt.getTime() + RAW_EMAIL_RETENTION_MS);
+  const id = await sha256Hex(raw);
+  const bytes = new Uint8Array(raw);
+  const chunks = [];
+  for (let offset = 0; offset < bytes.byteLength; offset += RAW_EMAIL_CHUNK_BYTES) {
+    chunks.push(bytes.slice(offset, Math.min(offset + RAW_EMAIL_CHUNK_BYTES, bytes.byteLength)));
+  }
+
+  const statements: D1PreparedStatement[] = [
+    db.prepare(
+      `DELETE FROM raw_emails
+        WHERE julianday(expires_at) <= julianday('now')`,
+    ),
+    db.prepare(
+      `INSERT OR IGNORE INTO raw_emails
+         (id, received_at, expires_at, envelope_from, envelope_to, message_id,
+          subject, raw_size, chunk_count)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      id,
+      receivedAt.toISOString(),
+      expiresAt.toISOString(),
+      boundedArchiveValue(metadata.envelopeFrom, 512),
+      boundedArchiveValue(metadata.envelopeTo, 512),
+      boundedArchiveValue(metadata.messageId, 2048),
+      boundedArchiveValue(metadata.subject, 4096),
+      bytes.byteLength,
+      chunks.length,
+    ),
+    ...chunks.map((chunk, index) => db.prepare(
+      `INSERT OR IGNORE INTO raw_email_chunks (email_id, chunk_index, raw_chunk)
+       VALUES (?, ?, ?)`,
+    ).bind(id, index, chunk)),
+    db.prepare(
+      `DELETE FROM raw_emails
+        WHERE id IN (
+          SELECT id
+            FROM raw_emails
+           ORDER BY received_at DESC, id DESC
+           LIMIT -1 OFFSET ${RAW_EMAIL_MAX_MESSAGES}
+        )`,
+    ),
+  ];
+  await db.batch(statements);
+  return id;
+}
+
+export async function purgeRawEmails(db: D1Database): Promise<void> {
+  await db.batch([
+    db.prepare(
+      `DELETE FROM raw_emails
+        WHERE julianday(expires_at) <= julianday('now')`,
+    ),
+    db.prepare(
+      `DELETE FROM raw_emails
+        WHERE id IN (
+          SELECT id
+            FROM raw_emails
+           ORDER BY received_at DESC, id DESC
+           LIMIT -1 OFFSET ${RAW_EMAIL_MAX_MESSAGES}
+        )`,
+    ),
+  ]);
+}
+
+async function sha256Hex(value: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", value);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function boundedArchiveValue(value: string | null, maximumLength: number): string | null {
+  return typeof value === "string" ? value.slice(0, maximumLength) : null;
+}
 
 export async function getTimeline(env: Pick<Env, "DB">): Promise<Response> {
   const result = await env.DB.prepare(
@@ -143,7 +244,7 @@ export async function getTimeline(env: Pick<Env, "DB">): Promise<Response> {
                 ELSE NULL
               END AS app_name,
               r.platform, r.app_store_id, r.app_version, r.status, r.submitted_at,
-              r.latest_event_at, r.rejection_reason, eligible.has_approved,
+              r.latest_event_at, r.guideline_code, r.guideline_title, eligible.has_approved,
               COALESCE(
                 r.app_icon_url,
                 (
@@ -189,7 +290,8 @@ export async function getTimeline(env: Pick<Env, "DB">): Promise<Response> {
         status: event.status,
         submittedAt: event.submitted_at,
         occurredAt: event.latest_event_at,
-        rejectionReason: event.status === "issue" ? event.rejection_reason : null,
+        guidelineCode: event.status === "issue" ? event.guideline_code : null,
+        guidelineTitle: event.status === "issue" ? event.guideline_title : null,
       })),
     },
     200,

@@ -108,6 +108,7 @@ function groupApps(events) {
 }
 
 function createSharedTimeline(apps) {
+  const experience = element("div", "timeline-experience");
   const board = element("article", "timeline-board");
   const toolbar = element("header", "timeline-board-toolbar");
   const summary = element("div", "timeline-board-summary");
@@ -128,9 +129,7 @@ function createSharedTimeline(apps) {
   const reset = controlButton(t("timeline.latest"), t("timeline.latestAria"));
   reset.classList.add("reset-button");
   controls.append(zoomOut, rangeLabel, zoomIn, reset);
-  toolbar.append(summary, controls);
 
-  const filterBar = element("div", "timeline-filter-bar");
   const categoryField = element("label", "timeline-filter-field");
   const categoryLabel = element("span");
   categoryLabel.textContent = t("timeline.category");
@@ -150,24 +149,9 @@ function createSharedTimeline(apps) {
   }
   categoryField.append(categoryLabel, categorySelect);
 
-  const appIdField = element("label", "timeline-filter-field");
-  const appIdLabel = element("span");
-  appIdLabel.textContent = t("timeline.appId");
-  const appIdInput = element("input", "timeline-filter-input");
-  appIdInput.type = "search";
-  appIdInput.inputMode = "numeric";
-  appIdInput.autocomplete = "off";
-  appIdInput.placeholder = t("timeline.appIdPlaceholder");
-  appIdInput.setAttribute("aria-label", t("timeline.filterAppId"));
-  appIdField.append(appIdLabel, appIdInput);
-
-  const clearFilters = element("button", "timeline-filter-clear");
-  clearFilters.type = "button";
-  clearFilters.textContent = t("timeline.clear");
-  clearFilters.disabled = true;
-  const filterStatus = element("span", "timeline-filter-status");
-  filterStatus.setAttribute("aria-live", "polite");
-  filterBar.append(categoryField, appIdField, clearFilters, filterStatus);
+  const toolbarActions = element("div", "timeline-toolbar-actions");
+  toolbarActions.append(categoryField, controls);
+  toolbar.append(summary, toolbarActions);
 
   const body = element("div", "timeline-board-body");
   const lanes = [];
@@ -232,36 +216,32 @@ function createSharedTimeline(apps) {
   );
   noMatches.classList.add("timeline-filter-empty");
   noMatches.hidden = true;
-  board.append(toolbar, filterBar, noMatches, body, footer, tooltip);
+  board.append(toolbar, noMatches, body, footer, tooltip);
+  const leaderboards = createLeaderboards();
+  experience.append(board, leaderboards.node);
 
   const applyFilters = () => {
     const selectedCategory = categorySelect.value;
-    const appIdQuery = appIdInput.value.replace(/\D/g, "");
-    if (appIdInput.value !== appIdQuery) appIdInput.value = appIdQuery;
-    const hasFilters = Boolean(selectedCategory || appIdQuery);
+    const hasFilters = Boolean(selectedCategory);
     let visibleApps = 0;
+    const filteredApps = [];
     for (const row of appRows) {
-      const visible = (!selectedCategory || row.app.appCategory === selectedCategory) &&
-        (!appIdQuery || String(row.app.appStoreId || "").includes(appIdQuery));
+      const visible = !selectedCategory || row.app.appCategory === selectedCategory;
       row.group.hidden = !visible;
-      if (visible) visibleApps += 1;
+      if (visible) {
+        visibleApps += 1;
+        filteredApps.push(row.app);
+      }
     }
     summaryTitle.textContent = hasFilters ? t("timeline.filteredApps") : t("timeline.allApps");
     summaryCopy.textContent = appCount(visibleApps);
-    filterStatus.textContent = hasFilters ? t("timeline.shown", { count: number(visibleApps) }) : "";
-    clearFilters.disabled = !hasFilters;
     noMatches.hidden = visibleApps !== 0;
     body.hidden = visibleApps === 0;
     footer.hidden = visibleApps === 0;
+    leaderboards.node.hidden = visibleApps === 0;
+    leaderboards.render(filteredApps);
   };
   categorySelect.addEventListener("change", applyFilters);
-  appIdInput.addEventListener("input", applyFilters);
-  clearFilters.addEventListener("click", () => {
-    categorySelect.value = "";
-    appIdInput.value = "";
-    applyFilters();
-    categorySelect.focus();
-  });
   applyFilters();
 
   new SharedTimelineChart(axis, lanes, tooltip, {
@@ -270,7 +250,95 @@ function createSharedTimeline(apps) {
     reset,
     rangeLabel,
   });
-  return board;
+  return experience;
+}
+
+function createLeaderboards() {
+  const node = element("section", "review-leaderboards");
+  node.setAttribute("aria-labelledby", "leaderboard-heading");
+  const header = element("div", "review-leaderboard-header");
+  const heading = element("h3");
+  heading.id = "leaderboard-heading";
+  heading.textContent = t("leaderboard.title");
+  const intro = element("p");
+  intro.textContent = t("leaderboard.intro");
+  header.append(heading, intro);
+
+  const grid = element("div", "review-leaderboard-grid");
+  const specifications = [
+    { key: "slowReject", status: "issue", slowest: true, tone: "issue" },
+    { key: "slowApproval", status: "success", slowest: true, tone: "success" },
+    { key: "fastApproval", status: "success", slowest: false, tone: "fast" },
+  ];
+  const lists = specifications.map((specification) => {
+    const card = element("article", `review-leaderboard-card ${specification.tone}`);
+    const cardHeading = element("h4");
+    const dot = element("i");
+    dot.setAttribute("aria-hidden", "true");
+    const title = element("span");
+    title.textContent = t(`leaderboard.${specification.key}`);
+    cardHeading.append(dot, title);
+    const list = element("ol", "review-leaderboard-list");
+    card.append(cardHeading, list);
+    grid.append(card);
+    return { ...specification, list };
+  });
+  node.append(header, grid);
+
+  return {
+    node,
+    render(apps) {
+      for (const specification of lists) {
+        const entries = leaderboardEntries(apps, specification.status, specification.slowest);
+        if (entries.length === 0) {
+          const empty = element("li", "review-leaderboard-empty");
+          empty.textContent = t("leaderboard.empty");
+          specification.list.replaceChildren(empty);
+          continue;
+        }
+        specification.list.replaceChildren(...entries.map((entry, index) => (
+          createLeaderboardEntry(entry, index + 1)
+        )));
+      }
+    },
+  };
+}
+
+function leaderboardEntries(apps, status, slowest) {
+  const entries = apps.flatMap((app) => app.events
+    .filter((event) => event.status === status)
+    .map((event) => ({ app, event, duration: reviewDuration(event) }))
+    .filter((entry) => entry.duration !== null));
+  entries.sort((left, right) => (
+    (slowest ? right.duration - left.duration : left.duration - right.duration) ||
+    eventTime(right.event) - eventTime(left.event) ||
+    String(left.event.submissionId).localeCompare(String(right.event.submissionId))
+  ));
+  return entries.slice(0, 5);
+}
+
+function createLeaderboardEntry(entry, rank) {
+  const item = element("li", "review-leaderboard-entry");
+  const rankNode = element("span", "review-leaderboard-rank");
+  rankNode.textContent = String(rank).padStart(2, "0");
+  const icon = element("span", "review-leaderboard-icon");
+  icon.append(createAppIcon(entry.app));
+  const copy = element("span", "review-leaderboard-copy");
+  const name = element("strong");
+  name.textContent = entry.app.appName;
+  const details = element("span", "review-leaderboard-meta");
+  details.textContent = [entry.event.platform, entry.event.appVersion].filter(Boolean).join(" · ");
+  copy.append(name, details);
+  const guideline = publicGuideline(entry.event);
+  if (entry.event.status === "issue" && guideline) {
+    const guidelineNode = element("span", "review-leaderboard-guideline");
+    guidelineNode.textContent = guideline;
+    copy.append(guidelineNode);
+  }
+  const duration = element("strong", "review-leaderboard-duration");
+  duration.textContent = formatReviewDuration(entry.duration);
+  item.append(rankNode, icon, copy, duration);
+  return item;
 }
 
 function createAppIdentity(app) {
@@ -534,8 +602,8 @@ class SharedTimelineChart {
         submitted: dateTime(point.startTime),
         replied: dateTime(point.endTime),
       });
-      const reason = accepted ? "" : publicRejectionReason(point.event.rejectionReason);
-      const accessibleLabel = reason ? `${label} ${reason}` : label;
+      const guideline = accepted ? "" : publicGuideline(point.event);
+      const accessibleLabel = guideline ? `${label} ${guideline}` : label;
 
       const marker = svgElement("g", `timeline-event ${accepted ? "success" : "issue"}`);
       marker.setAttribute("tabindex", "0");
@@ -611,10 +679,10 @@ class SharedTimelineChart {
     ];
     timing.textContent = timingLines.join("\n");
     const content = [heading, timing];
-    const reason = accepted ? "" : publicRejectionReason(point.event.rejectionReason);
-    if (reason) {
+    const guideline = accepted ? "" : publicGuideline(point.event);
+    if (guideline) {
       const copy = element("span", "timeline-tooltip-reason");
-      copy.textContent = reason;
+      copy.textContent = guideline;
       content.push(copy);
     }
     this.tooltip.replaceChildren(...content);
@@ -649,6 +717,14 @@ function timelinePoint(event, appName) {
     ? submittedTime
     : endTime;
   return { event, appName, startTime, endTime };
+}
+
+function reviewDuration(event) {
+  const endTime = Date.parse(event?.occurredAt);
+  const startTime = Date.parse(event?.submittedAt);
+  return Number.isFinite(startTime) && Number.isFinite(endTime) && startTime <= endTime
+    ? endTime - startTime
+    : null;
 }
 
 function assignPointTracks(points) {
@@ -739,6 +815,17 @@ function formatRange(span) {
   return timeCount("year", years);
 }
 
+function formatReviewDuration(duration) {
+  const totalMinutes = Math.floor(duration / (60 * 1000));
+  if (totalMinutes < 1) return t("leaderboard.underMinute");
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return t("leaderboard.daysHours", { days: number(days), hours: number(hours) });
+  if (hours > 0) return t("leaderboard.hoursMinutes", { hours: number(hours), minutes: number(minutes) });
+  return t("leaderboard.minutes", { minutes: number(minutes) });
+}
+
 function dateTime(value) {
   const timestamp = typeof value === "number" ? value : Date.parse(value);
   if (!Number.isFinite(timestamp)) return t("time.unknownDate");
@@ -769,9 +856,11 @@ function eventTime(event) {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
-function publicRejectionReason(value) {
-  if (typeof value !== "string") return "";
-  return value.replace(/(?:^|\n)\s*Next Steps\b[\s\S]*$/i, "").trim();
+function publicGuideline(event) {
+  const code = typeof event?.guidelineCode === "string" ? event.guidelineCode.trim() : "";
+  const title = typeof event?.guidelineTitle === "string" ? event.guidelineTitle.trim() : "";
+  const guideline = code ? t("tooltip.guideline", { code }) : "";
+  return [guideline, title].filter(Boolean).join(" · ");
 }
 
 function normalizedPublicName(value) {

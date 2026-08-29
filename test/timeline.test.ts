@@ -12,7 +12,10 @@ interface FakeTimelineRow {
   status: "issue" | "success";
   submitted_at: string;
   latest_event_at: string;
-  rejection_reason: string | null;
+  guideline_code: string | null;
+  guideline_title: string | null;
+  rejection_reason?: string | null;
+  issue_description?: string | null;
   forwarded_from?: string | null;
   has_approved: number;
 }
@@ -47,7 +50,10 @@ describe("public timeline", () => {
       status: "issue",
       submitted_at: "2026-08-28T00:00:00.000Z",
       latest_event_at: "2026-08-28T01:00:00.000Z",
-      rejection_reason: "Guideline 2.1",
+      guideline_code: "2.1",
+      guideline_title: "Information Needed",
+      rejection_reason: "Guideline 2.1\n\nIssue Description\nPrivate rejection details",
+      issue_description: "Private rejection details",
       forwarded_from: "developer@example.com",
       has_approved: 0,
     }]);
@@ -59,10 +65,15 @@ describe("public timeline", () => {
       appName: null,
       appStoreId: "1234567890",
       appCategory: null,
+      guidelineCode: "2.1",
+      guidelineTitle: "Information Needed",
     });
     expect(JSON.stringify(body)).not.toContain("Private pre-release name");
     expect(JSON.stringify(body)).not.toContain("forwardedFrom");
     expect(JSON.stringify(body)).not.toContain("developer@example.com");
+    expect(JSON.stringify(body)).not.toContain("rejectionReason");
+    expect(JSON.stringify(body)).not.toContain("Issue Description");
+    expect(JSON.stringify(body)).not.toContain("Private rejection details");
   });
 
   it("identifies manual and Gmail automatic forwarding sources", () => {
