@@ -48,19 +48,11 @@ interface StoredReview extends ParsedReviewEmail {
   appCategory: string | null;
 }
 
-interface RevealableAppNameRow {
-  app_name: string | null;
-}
-
 export default {
   async fetch(request, env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/api/timeline" && request.method === "GET") {
       return getTimeline(env);
-    }
-    const appNameMatch = url.pathname.match(/^\/api\/apps\/(\d{6,20})\/name$/);
-    if (appNameMatch && request.method === "GET") {
-      return getRevealableAppName(env, appNameMatch[1]);
     }
     if (url.pathname.startsWith("/api/")) {
       return json({ error: "Not found" }, 404);
@@ -239,18 +231,7 @@ export async function getTimeline(env: Pick<Env, "DB">): Promise<Response> {
        HAVING MAX(julianday(COALESCE(submitted_at, latest_event_at))) >=
               julianday('now', '-60 days')
      ), latest_events AS (
-       SELECT r.submission_id,
-              CASE
-                WHEN eligible.has_approved = 1 THEN (
-                  SELECT approved.app_name
-                    FROM reviews AS approved
-                   WHERE approved.app_store_id = r.app_store_id
-                     AND approved.status = 'success'
-                   ORDER BY approved.successful_at DESC, approved.latest_event_at DESC
-                   LIMIT 1
-                )
-                ELSE NULL
-              END AS app_name,
+       SELECT r.submission_id, r.app_name,
               r.platform, r.app_store_id, r.app_version, r.status, r.submitted_at,
               r.latest_event_at, r.guideline_code, r.guideline_title, eligible.has_approved,
               COALESCE(
@@ -289,7 +270,8 @@ export async function getTimeline(env: Pick<Env, "DB">): Promise<Response> {
     {
       events: result.results.map((event) => ({
         submissionId: event.submission_id,
-        appName: event.has_approved === 1 ? event.app_name : null,
+        appName: event.app_name,
+        hasApproved: event.has_approved === 1,
         platform: event.platform,
         appStoreId: event.app_store_id,
         appIconUrl: event.app_icon_url,
@@ -305,45 +287,6 @@ export async function getTimeline(env: Pick<Env, "DB">): Promise<Response> {
     200,
     { "Cache-Control": "public, max-age=30, s-maxage=60" },
   );
-}
-
-export async function getRevealableAppName(
-  env: Pick<Env, "DB">,
-  appStoreId: string,
-): Promise<Response> {
-  if (!/^\d{6,20}$/.test(appStoreId)) {
-    return json({ error: "Invalid App Store ID" }, 400, { "Cache-Control": "private, no-store" });
-  }
-
-  const row = await env.DB.prepare(
-    `SELECT candidate.app_name
-       FROM reviews AS candidate
-      WHERE candidate.app_store_id = ?
-        AND candidate.app_name IS NOT NULL
-        AND TRIM(candidate.app_name) <> ''
-        AND NOT EXISTS (
-          SELECT 1
-            FROM reviews AS approved
-           WHERE approved.app_store_id = candidate.app_store_id
-             AND approved.status = 'success'
-        )
-        AND EXISTS (
-          SELECT 1
-            FROM reviews AS recent
-           WHERE recent.app_store_id = candidate.app_store_id
-             AND julianday(COALESCE(recent.submitted_at, recent.latest_event_at)) >=
-                 julianday('now', '-60 days')
-        )
-      ORDER BY candidate.latest_event_at DESC
-      LIMIT 1`,
-  ).bind(appStoreId).first<RevealableAppNameRow>();
-  const appName = typeof row?.app_name === "string"
-    ? row.app_name.replace(/\s+/g, " ").trim()
-    : "";
-  if (!appName) {
-    return json({ error: "App name not found" }, 404, { "Cache-Control": "private, no-store" });
-  }
-  return json({ appName }, 200, { "Cache-Control": "private, no-store" });
 }
 
 async function enrichReviewMetadata(

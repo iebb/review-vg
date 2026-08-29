@@ -6,7 +6,7 @@ The public site uses one shared, date-scaled timeline with a synchronized axis a
 
 When an approval arrives, the Worker uses the public App Store ID in Apple's lookup API to fetch and store the app icon and primary category. The site links that icon to the public App Store page. Metadata lookup is bounded and fail-soft, so an Apple lookup outage does not discard a valid review result.
 
-Only apps with a submission in the most recent 60 days are returned by the public timeline API. Until an app has an accepted review, its email-derived name is withheld from the bulk timeline response and the site identifies it as “Unapproved.” A visitor may reveal that one app's name explicitly by clicking its label or fallback icon.
+Only apps with a submission in the most recent 60 days are returned by the public timeline API. Until an app has an accepted review, the interface initially identifies it as “Unapproved.” Its name arrives with the timeline data and is revealed immediately when a visitor clicks the label or fallback icon; the click never makes another request.
 
 Gmail automatic-forwarding verification emails from the exact visible sender `forwarding-noreply@google.com` are approved automatically, including mail delivered through Google's bounce-envelope domains. The Worker loads a validated Google `mail/vf-…` confirmation page, submits its confirmation form, and requires Gmail's success response without storing the forwarding address, token, or cookies.
 

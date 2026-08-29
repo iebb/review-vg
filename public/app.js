@@ -59,14 +59,13 @@ function groupApps(events) {
   const groups = new Map();
   for (const event of events) {
     const appStoreId = normalizedAppStoreId(event.appStoreId);
-    const approvedName = normalizedPublicName(event.appName);
+    const knownName = normalizedPublicName(event.appName);
     const category = normalizedPublicCategory(event.appCategory);
     const key = appStoreId ? `id:${appStoreId}` : `submission:${event.submissionId}`;
     const app = groups.get(key) || {
-      approvedName: null,
+      knownName: null,
+      hasApproved: false,
       revealedName: null,
-      nameRevealState: "idle",
-      nameRevealPromise: null,
       nameRevealListeners: new Set(),
       appStoreId,
       appIconUrl: null,
@@ -80,7 +79,8 @@ function groupApps(events) {
       app.latestEventAt = timestamp;
       app.appStoreId = appStoreId || app.appStoreId;
     }
-    if (approvedName) app.approvedName = approvedName;
+    if (knownName) app.knownName = knownName;
+    if (event.hasApproved === true) app.hasApproved = true;
     if (event.appIconUrl) app.appIconUrl = event.appIconUrl;
     if (category) app.appCategory = category;
     app.events.push(event);
@@ -93,9 +93,9 @@ function groupApps(events) {
   return [...groups.values()]
     .map((app) => ({
       ...app,
-      appName: app.approvedName || t("timeline.unapproved"),
+      appName: app.hasApproved && app.knownName ? app.knownName : t("timeline.unapproved"),
       appCategory: app.appCategory || "Uncategorized",
-      isApproved: Boolean(app.approvedName),
+      isApproved: app.hasApproved,
       events: app.events.sort(compareEvents),
       platforms: [...app.platforms.values()]
         .map((platform) => {
@@ -392,11 +392,11 @@ function createAppIcon(group) {
     popover.hidden = true;
     const update = () => {
       const revealed = Boolean(group.revealedName);
-      button.disabled = group.nameRevealState === "loading" || revealed;
+      button.disabled = revealed;
       button.setAttribute("aria-label", revealed
         ? t("timeline.revealedNameAria", { app: displayedAppName(group) })
         : t("timeline.revealNameAria"));
-      popover.textContent = revealed ? displayedAppName(group) : "";
+      popover.textContent = group.knownName;
       popover.hidden = !revealed;
     };
     subscribeAppName(group, update);
@@ -938,7 +938,7 @@ function platformRank(platform) {
 }
 
 function canRevealAppName(app) {
-  return !app.isApproved && Boolean(app.appStoreId);
+  return !app.isApproved && Boolean(app.knownName);
 }
 
 function displayedAppName(app) {
@@ -966,12 +966,8 @@ function createAppNameLabel(app, className) {
   button.type = "button";
   const update = () => {
     const revealed = Boolean(app.revealedName);
-    button.textContent = app.nameRevealState === "loading"
-      ? t("timeline.revealingName")
-      : app.nameRevealState === "error"
-        ? t("timeline.revealRetry")
-        : displayedAppName(app);
-    button.disabled = app.nameRevealState === "loading" || revealed;
+    button.textContent = displayedAppName(app);
+    button.disabled = revealed;
     button.setAttribute("aria-label", revealed
       ? t("timeline.revealedNameAria", { app: displayedAppName(app) })
       : t("timeline.revealNameAria"));
@@ -981,33 +977,10 @@ function createAppNameLabel(app, className) {
   return button;
 }
 
-async function revealAppName(app) {
+function revealAppName(app) {
   if (!canRevealAppName(app) || app.revealedName) return;
-  if (app.nameRevealPromise) return app.nameRevealPromise;
-  app.nameRevealState = "loading";
+  app.revealedName = app.knownName;
   notifyAppName(app);
-  app.nameRevealPromise = fetch(`/api/apps/${encodeURIComponent(app.appStoreId)}/name`, {
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-  })
-    .then(async (response) => {
-      if (!response.ok) throw new Error(`App name request failed: ${response.status}`);
-      const payload = await response.json();
-      const appName = normalizedPublicName(payload.appName);
-      if (!appName) throw new Error("App name response was empty");
-      app.revealedName = appName;
-      app.nameRevealState = "revealed";
-      notifyAppName(app);
-    })
-    .catch((error) => {
-      app.nameRevealState = "error";
-      notifyAppName(app);
-      console.error(error);
-    })
-    .finally(() => {
-      app.nameRevealPromise = null;
-    });
-  return app.nameRevealPromise;
 }
 
 function appStoreUrl(appStoreId) {
