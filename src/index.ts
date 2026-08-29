@@ -1,50 +1,35 @@
 import { extractReviewsFromEmail, parseInboundEmail } from "./email-ingest";
 import { approveGmailForwarding, gmailForwardingConfirmationUrl } from "./gmail-forwarding";
+import { fetchAppStoreIcons } from "./app-store";
 import type { ParsedReviewEmail } from "./parser";
 
 const REPORT_ADDRESS = "report@review.vg";
 const MAX_EMAIL_BYTES = 20 * 1024 * 1024;
 
-interface ReviewRow {
-  submission_id: string;
-  app_name: string;
-  platform: string;
-  app_store_id: string | null;
-  app_version: string | null;
-  status: "issue" | "success";
-  submitted_at: string | null;
-  issue_at: string | null;
-  successful_at: string | null;
-  latest_event_at: string;
-  guideline_code: string | null;
-  guideline_title: string | null;
-  rejection_reason: string | null;
-  issue_description: string | null;
-  next_steps: string | null;
-}
-
-interface StatsRow {
-  total: number;
-  successful: number;
-  issues: number;
-  avg_review_seconds: number | null;
-}
-
 interface TimelineEventRow {
   submission_id: string;
   app_name: string;
   platform: string;
+  app_store_id: string | null;
+  app_icon_url: string | null;
   app_version: string | null;
   status: "issue" | "success";
   latest_event_at: string;
+  rejection_reason: string | null;
+}
+
+interface ExistingIconRow {
+  app_store_id: string;
+  app_icon_url: string;
+}
+
+interface StoredReview extends ParsedReviewEmail {
+  appIconUrl: string | null;
 }
 
 export default {
   async fetch(request, env): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === "/api/reviews" && request.method === "GET") {
-      return getReviews(request, env);
-    }
     if (url.pathname === "/api/timeline" && request.method === "GET") {
       return getTimeline(env);
     }
@@ -55,7 +40,7 @@ export default {
     const headers = new Headers(asset.headers);
     headers.set(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'",
+      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.mzstatic.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'",
     );
     headers.set("Permissions-Policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=()");
     headers.set("Referrer-Policy", "no-referrer");
@@ -98,7 +83,8 @@ export default {
         return;
       }
 
-      const stored = await storeReviews(env.DB, extracted.reviews);
+      const reviewsWithIcons = await enrichReviewIcons(env.DB, extracted.reviews);
+      const stored = await storeReviews(env.DB, reviewsWithIcons);
       console.log(
         JSON.stringify({
           event: "review_email_stored",
@@ -119,60 +105,23 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-async function getReviews(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
-  const requestedStatus = url.searchParams.get("status");
-  const status = requestedStatus === "issue" || requestedStatus === "success" ? requestedStatus : null;
-  const rawLimit = Number.parseInt(url.searchParams.get("limit") ?? "50", 10);
-  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 50;
-
-  const where = status ? "WHERE status = ?" : "";
-  const reviewStatement = env.DB.prepare(
-      `SELECT submission_id, app_name, platform, app_store_id, app_version, status,
-            submitted_at, issue_at, successful_at, latest_event_at,
-            guideline_code, guideline_title, rejection_reason, issue_description, next_steps
-       FROM reviews
-       ${where}
-      ORDER BY latest_event_at DESC
-      LIMIT ?`,
-  );
-  const boundReviews = status ? reviewStatement.bind(status, limit) : reviewStatement.bind(limit);
-  const [reviewResult, statsResult] = await env.DB.batch<ReviewRow | StatsRow>([
-    boundReviews,
-    env.DB.prepare(
-      `SELECT COUNT(*) AS total,
-              SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS successful,
-              SUM(CASE WHEN status = 'issue' THEN 1 ELSE 0 END) AS issues,
-              AVG(CASE
-                    WHEN submitted_at IS NOT NULL AND successful_at IS NOT NULL
-                    THEN unixepoch(successful_at) - unixepoch(submitted_at)
-                  END) AS avg_review_seconds
-         FROM reviews`,
-    ),
-  ]);
-
-  const stats = statsResult.results[0] as unknown as StatsRow | undefined;
-  const reviews = (reviewResult.results as unknown as ReviewRow[]).map(toPublicReview);
-  return json(
-    {
-      reviews,
-      stats: {
-        total: Number(stats?.total ?? 0),
-        successful: Number(stats?.successful ?? 0),
-        issues: Number(stats?.issues ?? 0),
-        averageReviewSeconds: stats?.avg_review_seconds === null ? null : Number(stats?.avg_review_seconds ?? 0),
-      },
-    },
-    200,
-    { "Cache-Control": "public, max-age=30, s-maxage=60" },
-  );
-}
-
 async function getTimeline(env: Env): Promise<Response> {
   const result = await env.DB.prepare(
-    `SELECT submission_id, app_name, platform, app_version, status, latest_event_at
-       FROM reviews
-      ORDER BY latest_event_at ASC
+    `SELECT r.submission_id, r.app_name, r.platform, r.app_store_id, r.app_version,
+            r.status, r.latest_event_at, r.rejection_reason,
+            COALESCE(
+              r.app_icon_url,
+              (
+                SELECT icon.app_icon_url
+                  FROM reviews AS icon
+                 WHERE icon.app_store_id = r.app_store_id
+                   AND icon.app_icon_url IS NOT NULL
+                 ORDER BY icon.successful_at DESC
+                 LIMIT 1
+              )
+            ) AS app_icon_url
+       FROM reviews AS r
+      ORDER BY r.latest_event_at ASC
       LIMIT 1000`,
   ).all<TimelineEventRow>();
 
@@ -182,9 +131,12 @@ async function getTimeline(env: Env): Promise<Response> {
         submissionId: event.submission_id,
         appName: event.app_name,
         platform: event.platform,
+        appStoreId: event.app_store_id,
+        appIconUrl: event.app_icon_url,
         appVersion: event.app_version,
         status: event.status,
         occurredAt: event.latest_event_at,
+        rejectionReason: event.status === "issue" ? event.rejection_reason : null,
       })),
     },
     200,
@@ -192,9 +144,55 @@ async function getTimeline(env: Env): Promise<Response> {
   );
 }
 
-async function storeReviews(
+async function enrichReviewIcons(
   db: D1Database,
   reviews: ParsedReviewEmail[],
+): Promise<StoredReview[]> {
+  const appStoreIds = [...new Set(reviews.map((review) => review.appStoreId))];
+  if (appStoreIds.length === 0) {
+    return reviews.map((review) => ({ ...review, appIconUrl: null }));
+  }
+
+  const placeholders = appStoreIds.map(() => "?").join(", ");
+  const existing = await db
+    .prepare(
+      `SELECT app_store_id, app_icon_url
+         FROM reviews
+        WHERE app_store_id IN (${placeholders})
+          AND app_icon_url IS NOT NULL
+        GROUP BY app_store_id`,
+    )
+    .bind(...appStoreIds)
+    .all<ExistingIconRow>();
+  const icons = new Map(existing.results.map((row) => [row.app_store_id, row.app_icon_url]));
+
+  const approvedIds = [...new Set(
+    reviews
+      .filter((review) => review.status === "success" && !icons.has(review.appStoreId))
+      .map((review) => review.appStoreId),
+  )];
+
+  for (let offset = 0; offset < approvedIds.length; offset += 50) {
+    try {
+      const fetched = await fetchAppStoreIcons(approvedIds.slice(offset, offset + 50));
+      for (const [appStoreId, iconUrl] of fetched) icons.set(appStoreId, iconUrl);
+    } catch (error) {
+      console.warn(JSON.stringify({
+        event: "app_store_icon_lookup_failed",
+        error: error instanceof Error ? error.name : "UnknownError",
+      }));
+    }
+  }
+
+  return reviews.map((review) => ({
+    ...review,
+    appIconUrl: icons.get(review.appStoreId) ?? null,
+  }));
+}
+
+async function storeReviews(
+  db: D1Database,
+  reviews: StoredReview[],
 ): Promise<{ submissions: number }> {
   const statements: D1PreparedStatement[] = [];
 
@@ -202,11 +200,12 @@ async function storeReviews(
     statements.push(
       db
       .prepare(
-        `INSERT INTO reviews (
+         `INSERT INTO reviews (
            submission_id, app_name, platform, organization_id, app_store_id, app_version,
            status, submitted_at, issue_at, successful_at, latest_event_at, submitted_via,
-           guideline_code, guideline_title, rejection_reason, issue_description, next_steps, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+           guideline_code, guideline_title, rejection_reason, issue_description, next_steps,
+           app_icon_url, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
          ON CONFLICT(submission_id) DO UPDATE SET
            app_name = excluded.app_name,
            platform = excluded.platform,
@@ -230,6 +229,7 @@ async function storeReviews(
            rejection_reason = COALESCE(reviews.rejection_reason, excluded.rejection_reason),
            issue_description = COALESCE(reviews.issue_description, excluded.issue_description),
            next_steps = COALESCE(reviews.next_steps, excluded.next_steps),
+           app_icon_url = COALESCE(excluded.app_icon_url, reviews.app_icon_url),
            updated_at = CURRENT_TIMESTAMP`,
       )
       .bind(
@@ -250,6 +250,7 @@ async function storeReviews(
         review.rejectionReason,
         review.issueDescription,
         review.nextSteps,
+        review.appIconUrl,
       ),
     );
   }
@@ -257,27 +258,6 @@ async function storeReviews(
   await db.batch(statements);
   return {
     submissions: new Set(reviews.map((review) => review.submissionId)).size,
-  };
-}
-
-function toPublicReview(row: ReviewRow) {
-  return {
-    id: row.submission_id,
-    submissionId: row.submission_id,
-    appName: row.app_name,
-    platform: row.platform,
-    appStoreId: row.app_store_id,
-    appVersion: row.app_version,
-    status: row.status,
-    submittedAt: row.submitted_at,
-    issueAt: row.issue_at,
-    successfulAt: row.successful_at,
-    latestEventAt: row.latest_event_at,
-    guidelineCode: row.guideline_code,
-    guidelineTitle: row.guideline_title,
-    rejectionReason: row.rejection_reason,
-    issueDescription: row.issue_description,
-    nextSteps: row.next_steps,
   };
 }
 

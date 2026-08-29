@@ -85,6 +85,19 @@ describe("parseReviewEmail", () => {
     });
   });
 
+  it("stores an explicit fallback when Apple provides no detailed rejection reason", () => {
+    const result = parseReviewEmail({
+      ...base,
+      subject: "There's an issue with your Example (iOS) submission.",
+      text: "Submission ID: 11111111-2222-3333-4444-555555555555",
+      html: `<a href="https://appstoreconnect.apple.com/olympus/v1/session/switchTo/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee?targetUrl=/apps/1234567890/appstore/reviewsubmissions/details/11111111-2222-3333-4444-555555555555">View</a>`,
+    });
+
+    expect(result?.rejectionReason).toBe(
+      "Apple reported an issue with this submission but did not include a detailed rejection reason in the forwarded email.",
+    );
+  });
+
   it("accepts a manual forward", () => {
     const result = parseReviewEmail({
       ...base,

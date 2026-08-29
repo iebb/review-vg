@@ -2,7 +2,9 @@
 
 A Cloudflare Worker that serves the review.vg static site, receives App Store Connect review emails at `report@review.vg`, parses their review lifecycle, and stores the public facts in D1. It accepts both ordinary forwards and batches of attached `.eml` / `message/rfc822` emails.
 
-The public site includes a timeline for every app and operating-system pair: each unique Submission ID is one block, rounded red for a failed review and rounded green for an accepted review. Separate submissions of the same app version remain separate blocks.
+The public site includes one date-scaled, zoomable timeline for every app and operating-system pair. Each unique Submission ID is one rounded marker: red for a failed review and green for an accepted review. Separate submissions of the same app version remain separate markers. Rejection reasons appear beneath their matching app/OS timeline; no separate record feed is published.
+
+When an approval arrives, the Worker uses the public App Store ID in Apple's lookup API to fetch and store the app icon. The site links that icon to the public App Store page. Icon lookup is bounded and fail-soft, so an Apple lookup outage does not discard a valid review result.
 
 Gmail automatic-forwarding verification emails from the exact visible sender `forwarding-noreply@google.com` are approved automatically, including mail delivered through Google's bounce-envelope domains. The Worker loads a validated Google `mail/vf-…` confirmation page, submits its confirmation form, and requires Gmail's success response without storing the forwarding address, token, or cookies.
 
@@ -10,7 +12,7 @@ Gmail automatic-forwarding verification emails from the exact visible sender `fo
 
 - App name and platform
 - App version
-- Public App Store ID, when present
+- Public App Store ID and App Store icon URL, when present
 - Canonical App Store submission ID, used as the public logical key
 - The App Store Connect organization UUID from each valid message (stored privately)
 - Submitted, issue, and successful timestamps
@@ -45,6 +47,7 @@ Apply production migrations before deploying a schema-dependent Worker:
 
 ```sh
 npm run db:migrate:remote
-npm run db:seed:remote
 npm run deploy
 ```
+
+The UI self-hosts the Geologica variable font. Its SIL Open Font License is included at `public/fonts/OFL.txt`.

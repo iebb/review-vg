@@ -58,38 +58,12 @@
         </div>
       </section>
 
-      <section class="dashboard shell" aria-labelledby="results-heading">
-        <div class="stats" aria-live="polite">
-          <div class="stat"><strong id="stat-total">—</strong><span>Submissions shared</span></div>
-          <div class="stat"><strong id="stat-success">—</strong><span>Approved</span></div>
-          <div class="stat"><strong id="stat-issues">—</strong><span>Issues reported</span></div>
-          <div class="stat"><strong id="stat-time">—</strong><span>Average review</span></div>
-        </div>
-
-        <div class="results-header">
-          <div>
-            <p class="section-kicker">Latest signal</p>
-            <h2 id="results-heading">Review results</h2>
-          </div>
-          <div class="filters" role="group" aria-label="Filter review results">
-            <button class="filter is-active" type="button" data-status="all">All</button>
-            <button class="filter" type="button" data-status="success">Approved</button>
-            <button class="filter" type="button" data-status="issue">Issues</button>
-          </div>
-        </div>
-
-        <div id="results" class="results-grid" aria-live="polite">
-          <div class="loading-card"><span></span><span></span><span></span></div>
-          <div class="loading-card"><span></span><span></span><span></span></div>
-        </div>
-      </section>
-
       <section class="timeline-section shell" aria-labelledby="timeline-heading">
         <div class="timeline-header">
           <div>
             <p class="section-kicker">Review history</p>
             <h2 id="timeline-heading">Outcome timelines</h2>
-            <p>One block per unique submission, grouped by app and operating system.</p>
+            <p>One date-scaled chart per app and operating system. Zoom to inspect close submissions.</p>
           </div>
           <div class="timeline-legend" aria-label="Timeline legend">
             <span><i class="issue" aria-hidden="true"></i>Failed</span>

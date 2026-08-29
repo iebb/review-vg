@@ -40,6 +40,8 @@ const REVIEW_URL = new RegExp(
   `appstoreconnect\\.apple\\.com/olympus/v1/session/switchTo/(${UUID_PATTERN})\\?targetUrl=/apps/(\\d+)/(?:appstore|distribution)/reviewsubmissions/details/(${UUID_PATTERN})(?![0-9a-f-])`,
   "i",
 );
+const FALLBACK_REJECTION_REASON =
+  "Apple reported an issue with this submission but did not include a detailed rejection reason in the forwarded email.";
 
 const MONTHS: Record<string, number> = {
   Jan: 0,
@@ -87,6 +89,9 @@ export function parseReviewEmail(input: EmailInput): ParsedReviewEmail | null {
   const issueDescription =
     status === "issue" ? extractSection(combined, "Issue Description", "Next Steps") : null;
   const nextSteps = status === "issue" ? extractSection(combined, "Next Steps", "Resources") : null;
+  const rejectionReason = status === "issue"
+    ? buildRejectionReason(guideline, issueDescription, nextSteps) ?? FALLBACK_REJECTION_REASON
+    : null;
 
   return {
     appName: subjectMatch.appName,
@@ -103,7 +108,7 @@ export function parseReviewEmail(input: EmailInput): ParsedReviewEmail | null {
     submittedVia: extractLabel(combined, "Submitted by", ["Number of items submitted", "Submission ID"]),
     guidelineCode: guideline?.code ?? null,
     guidelineTitle: guideline?.title ?? null,
-    rejectionReason: buildRejectionReason(guideline, issueDescription, nextSteps),
+    rejectionReason,
     issueDescription,
     nextSteps,
     messageId: input.messageId,
