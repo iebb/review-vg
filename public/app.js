@@ -82,12 +82,19 @@ function groupApps(events) {
   return [...groups.values()]
     .map((app) => ({
       ...app,
-      appName: app.approvedName || (app.appStoreId ? `App ID ${app.appStoreId}` : "Unapproved app"),
+      appName: app.approvedName || "Unapproved app",
       appCategory: app.appCategory || "Uncategorized",
       isApproved: Boolean(app.approvedName),
       events: app.events.sort(compareEvents),
       platforms: [...app.platforms.values()]
-        .map((platform) => ({ ...platform, events: platform.events.sort(compareEvents) }))
+        .map((platform) => {
+          const platformEvents = platform.events.sort(compareEvents);
+          return {
+            ...platform,
+            events: platformEvents,
+            appVersion: latestAppVersion(platformEvents),
+          };
+        })
         .sort((left, right) => platformRank(left.platform) - platformRank(right.platform) || left.platform.localeCompare(right.platform)),
     }))
     .sort((left, right) => right.latestEventAt - left.latestEventAt || left.appName.localeCompare(right.appName));
@@ -99,9 +106,8 @@ function createSharedTimeline(apps) {
   const summary = element("div", "timeline-board-summary");
   const summaryTitle = element("strong");
   summaryTitle.textContent = "All apps";
-  const totalSubmissions = apps.reduce((total, app) => total + app.events.length, 0);
   const summaryCopy = element("span");
-  summaryCopy.textContent = `${number(apps.length)} ${apps.length === 1 ? "app" : "apps"} · ${number(totalSubmissions)} submissions`;
+  summaryCopy.textContent = `${number(apps.length)} ${apps.length === 1 ? "app" : "apps"}`;
   summary.append(summaryTitle, summaryCopy);
 
   const controls = element("div", "timeline-controls");
@@ -144,7 +150,7 @@ function createSharedTimeline(apps) {
   appIdInput.type = "search";
   appIdInput.inputMode = "numeric";
   appIdInput.autocomplete = "off";
-  appIdInput.placeholder = "e.g. 6783830742";
+  appIdInput.placeholder = "Enter App Store ID";
   appIdInput.setAttribute("aria-label", "Filter by App Store app ID");
   appIdField.append(appIdLabel, appIdInput);
 
@@ -169,13 +175,19 @@ function createSharedTimeline(apps) {
     app.platforms.forEach((platform, index) => {
       const row = index + 1;
       const platformLabel = element("span", "timeline-platform-label");
-      platformLabel.textContent = platform.platform;
+      const platformName = element("span", "timeline-platform-name");
+      platformName.textContent = platform.platform;
+      platformLabel.append(platformName);
+      if (platform.appVersion) {
+        const platformVersion = element("span", "timeline-platform-version");
+        platformVersion.textContent = platform.appVersion;
+        platformLabel.append(platformVersion);
+      }
       platformLabel.style.gridRow = String(row);
       const svg = document.createElementNS(SVG_NS, "svg");
       svg.classList.add("timeline-lane");
       svg.style.gridRow = String(row);
       svg.setAttribute("role", "group");
-      svg.setAttribute("tabindex", "0");
       svg.setAttribute("aria-label", `${app.appName} ${platform.platform} review durations`);
       group.append(platformLabel, svg);
       lanes.push({ svg, appName: app.appName, platform: platform.platform, events: platform.events });
@@ -190,7 +202,6 @@ function createSharedTimeline(apps) {
   const axis = document.createElementNS(SVG_NS, "svg");
   axis.classList.add("timeline-shared-axis");
   axis.setAttribute("role", "img");
-  axis.setAttribute("tabindex", "0");
   axis.setAttribute("aria-label", "Shared review date axis");
   axisRow.append(axisSpacer, axis);
   body.append(axisRow);
@@ -217,18 +228,14 @@ function createSharedTimeline(apps) {
     if (appIdInput.value !== appIdQuery) appIdInput.value = appIdQuery;
     const hasFilters = Boolean(selectedCategory || appIdQuery);
     let visibleApps = 0;
-    let visibleSubmissions = 0;
     for (const row of appRows) {
       const visible = (!selectedCategory || row.app.appCategory === selectedCategory) &&
         (!appIdQuery || String(row.app.appStoreId || "").includes(appIdQuery));
       row.group.hidden = !visible;
-      if (visible) {
-        visibleApps += 1;
-        visibleSubmissions += row.app.events.length;
-      }
+      if (visible) visibleApps += 1;
     }
     summaryTitle.textContent = hasFilters ? "Filtered apps" : "All apps";
-    summaryCopy.textContent = `${number(visibleApps)} ${visibleApps === 1 ? "app" : "apps"} · ${number(visibleSubmissions)} ${visibleSubmissions === 1 ? "submission" : "submissions"}`;
+    summaryCopy.textContent = `${number(visibleApps)} ${visibleApps === 1 ? "app" : "apps"}`;
     filterStatus.textContent = hasFilters ? `${number(visibleApps)} shown` : "";
     clearFilters.disabled = !hasFilters;
     noMatches.hidden = visibleApps !== 0;
@@ -264,11 +271,7 @@ function createAppIdentity(app) {
   const category = element("span", "timeline-app-category");
   category.textContent = app.appCategory;
   category.title = app.appCategory;
-  const details = element("span", "timeline-app-details");
-  const id = app.appStoreId ? `ID ${app.appStoreId} · ` : "";
-  details.textContent = `${id}${number(app.events.length)} ${app.events.length === 1 ? "submission" : "submissions"}`;
-  details.title = details.textContent;
-  meta.append(category, details);
+  meta.append(category);
   nameBlock.append(title, meta);
   identity.append(nameBlock);
   return identity;
@@ -722,6 +725,14 @@ function dateTime(value) {
 
 function compareEvents(left, right) {
   return eventTime(left) - eventTime(right) || String(left.submissionId).localeCompare(String(right.submissionId));
+}
+
+function latestAppVersion(events) {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const value = events[index]?.appVersion;
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
 }
 
 function eventTime(event) {
