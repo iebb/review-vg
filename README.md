@@ -57,3 +57,4 @@ npm run deploy
 ```
 
 The UI self-hosts the Geologica variable font. Its SIL Open Font License is included at `public/fonts/OFL.txt`.
+The 1200×630 Open Graph image is stored at `public/og-image.png` and is referenced by both Open Graph and Twitter large-card metadata.
