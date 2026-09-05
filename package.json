@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "build:data": "node scripts/build-static-data.mjs",
+    "build:data:local": "node scripts/build-static-data.mjs --local",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

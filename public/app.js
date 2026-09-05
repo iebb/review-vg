@@ -25,12 +25,13 @@ document.querySelector("#copy-address")?.addEventListener("click", async (event)
   }
 });
 
-async function loadTimelines() {
+function loadTimelines() {
   timelinesNode.setAttribute("aria-busy", "true");
   try {
-    const response = await fetch("/api/timeline");
-    if (!response.ok) throw new Error(`Timeline request failed: ${response.status}`);
-    const data = await response.json();
+    const data = window.ReviewData;
+    if (!data || !Array.isArray(data.events) || !Array.isArray(data.leaderboardEvents)) {
+      throw new Error("The static review snapshot is missing or invalid");
+    }
     const timelineEvents = Array.isArray(data.events) ? data.events : [];
     const leaderboardEvents = Array.isArray(data.leaderboardEvents)
       ? data.leaderboardEvents

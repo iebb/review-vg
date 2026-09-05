@@ -2,94 +2,12 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import {
   forwardedFromAddress,
-  getTimeline,
   isReviewRecipient,
 } from "../src/index";
 
 const projectUrl = new URL("../", import.meta.url);
 
-interface FakeTimelineRow {
-  submission_id: string;
-  app_name: string | null;
-  platform: string;
-  app_store_id: string;
-  app_icon_url: string | null;
-  app_category: string | null;
-  app_version: string;
-  status: "issue" | "success";
-  submitted_at: string;
-  latest_event_at: string;
-  guideline_code: string | null;
-  guideline_title: string | null;
-  rejection_reason?: string | null;
-  issue_description?: string | null;
-  forwarded_from?: string | null;
-  has_approved: number;
-  in_timeline: number;
-}
-
-function fakeEnvironment(rows: FakeTimelineRow[]) {
-  let query = "";
-  const env = {
-    DB: {
-      prepare(sql: string) {
-        query = sql;
-        return {
-          async all() {
-            return { results: rows };
-          },
-        };
-      },
-    },
-  } as unknown as Pick<Env, "DB">;
-  return { env, query: () => query };
-}
-
 describe("public timeline", () => {
-  it("returns app names directly while keeping private review fields hidden", async () => {
-    const fixture = fakeEnvironment([{
-      submission_id: "11111111-2222-3333-4444-555555555555",
-      app_name: "Private pre-release name",
-      platform: "iOS",
-      app_store_id: "1234567890",
-      app_icon_url: null,
-      app_category: null,
-      app_version: "1.0",
-      status: "issue",
-      submitted_at: "2026-08-28T00:00:00.000Z",
-      latest_event_at: "2026-08-28T01:00:00.000Z",
-      guideline_code: "2.1",
-      guideline_title: "Information Needed",
-      rejection_reason: "Guideline 2.1\n\nIssue Description\nPrivate rejection details",
-      issue_description: "Private rejection details",
-      forwarded_from: "developer@example.com",
-      has_approved: 0,
-      in_timeline: 1,
-    }]);
-
-    const response = await getTimeline(fixture.env);
-    const body = await response.json() as {
-      events: Array<Record<string, unknown>>;
-      leaderboardEvents: Array<Record<string, unknown>>;
-    };
-
-    expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
-    expect(body.events[0]).toMatchObject({
-      appName: "Private pre-release name",
-      hasApproved: false,
-      appStoreId: "1234567890",
-      appCategory: null,
-      guidelineCode: "2.1",
-      guidelineTitle: "Information Needed",
-    });
-    expect(JSON.stringify(body)).not.toContain("forwardedFrom");
-    expect(JSON.stringify(body)).not.toContain("developer@example.com");
-    expect(JSON.stringify(body)).not.toContain("rejectionReason");
-    expect(JSON.stringify(body)).not.toContain("Issue Description");
-    expect(JSON.stringify(body)).not.toContain("Private rejection details");
-    expect(body.leaderboardEvents).toHaveLength(1);
-  });
-
   it("identifies manual and Gmail automatic forwarding sources", () => {
     expect(forwardedFromAddress({
       from: { address: "Developer@Example.com" },
@@ -110,19 +28,27 @@ describe("public timeline", () => {
     expect(isReviewRecipient("@review.vg")).toBe(false);
   });
 
-  it("marks six-month timeline events while retaining all history for leaderboards", async () => {
-    const fixture = fakeEnvironment([]);
+  it("builds a six-month timeline while retaining all history for leaderboards", async () => {
+    const query = await readFile(new URL("scripts/public-reviews.sql", projectUrl), "utf8");
 
-    await getTimeline(fixture.env);
-
-    expect(fixture.query()).toContain("julianday('now', '-6 months')");
-    expect(fixture.query()).toContain("julianday('now', '-60 days')");
-    expect(fixture.query()).toContain("SELECT r.submission_id, r.app_name");
-    expect(fixture.query()).toContain("states.has_approved");
-    expect(fixture.query()).toContain("END AS in_timeline");
-    expect(fixture.query()).toContain("LEFT JOIN app_metadata AS metadata");
-    expect(fixture.query()).not.toContain("LIMIT 1000");
-    expect(fixture.query()).not.toContain("r.app_icon_url");
+    expect(query).toContain("julianday('now', '-6 months')");
+    expect(query).toContain("julianday('now', '-60 days')");
+    expect(query).toContain("SELECT r.submission_id");
+    expect(query).toContain("states.has_approved");
+    expect(query).toContain("END AS in_timeline");
+    expect(query).toContain("LEFT JOIN app_metadata AS metadata");
+    expect(query).not.toContain("LIMIT 1000");
+    expect(query).not.toContain("r.app_icon_url");
+    for (const privateColumn of [
+      "forwarded_from",
+      "organization_uuid",
+      "rejection_reason",
+      "issue_description",
+      "next_steps",
+      "raw_email",
+    ]) {
+      expect(query).not.toContain(privateColumn);
+    }
   });
 
   it("advertises apple@review.vg without exposing the former primary address", async () => {
@@ -141,6 +67,22 @@ describe("public timeline", () => {
     const script = await readFile(new URL("public/app.js", projectUrl), "utf8");
 
     expect(script).not.toContain("/api/apps/");
+    expect(script).not.toContain("/api/timeline");
+    expect(script).not.toContain("fetch(");
+    expect(script).toContain("window.ReviewData");
     expect(script).toContain("app.revealedName = app.knownName");
+  });
+
+  it("serves the prebuilt public snapshot before the Worker", async () => {
+    const [config, packageSource, html] = await Promise.all([
+      readFile(new URL("wrangler.jsonc", projectUrl), "utf8"),
+      readFile(new URL("package.json", projectUrl), "utf8"),
+      readFile(new URL("public/index.html", projectUrl), "utf8"),
+    ]);
+
+    expect(config).toContain('"run_worker_first": false');
+    expect(config).not.toContain('"binding": "ASSETS"');
+    expect(packageSource).toContain('"build:data": "node scripts/build-static-data.mjs"');
+    expect(html).toContain('<script src="/review-data.js" defer></script>');
   });
 });

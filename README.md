@@ -1,6 +1,8 @@
 # review.vg
 
-A Cloudflare Worker that serves the review.vg static site, receives App Store Connect review emails at `apple@review.vg`, parses their review lifecycle, and stores the public facts in D1. It accepts both ordinary forwards and batches of attached `.eml` / `message/rfc822` emails. Email Routing remains a catch-all, so any local part at `review.vg` reaches the same Worker.
+A static Cloudflare site backed by an Email Worker and D1. The Worker receives App Store Connect review emails at `apple@review.vg`, parses their review lifecycle, and stores the results in D1. It accepts both ordinary forwards and batches of attached `.eml` / `message/rfc822` emails. Email Routing remains a catch-all, so any local part at `review.vg` reaches the same Worker.
+
+The public timeline is built once per day by a scheduled Codex project task. Each run uses a clean copy of `origin/master`, runs the privacy-limited query in `scripts/public-reviews.sql`, validates and serializes the result to `public/review-data.js`, tests the project, and deploys the static assets. Page visits load that prebuilt file directly: there is no public timeline API, no request-time Worker execution for site assets, and no request-time D1 query.
 
 The public site uses one shared, date-scaled timeline with a synchronized axis and one y-series per app/OS. iOS, macOS, tvOS, and visionOS are preserved as distinct platform series and grouped under one app identity when an app appears on multiple platforms. The chart covers the latest six calendar months, opens on the latest 30 days, and can zoom or pan within that window. Its category selector filters both the chart and three all-history top-10 leaderboards: slowest rejections, slowest approvals, and fastest approvals. Each unique Submission ID is one rounded duration bar spanning submission to Apple's reply: red for a rejected review and green for an accepted review. Near-instant reviews retain a circle-sized minimum marker. On small screens, only the app icon remains frozen while the name and platform columns are removed, the timeline body scrolls in both directions, and the shared date axis stays pinned to the bottom. Separate submissions of the same app version remain separate bars. Rejected records expose only their App Review guideline in hover/focus details and leaderboard entries; issue descriptions and full rejection reasons are not public.
 
@@ -22,7 +24,7 @@ Gmail automatic-forwarding verification emails from the exact visible sender `fo
 - A rejection reason assembled from the guideline and issue description
 - The exact raw MIME message in private, chunked D1 rows for seven days
 
-Apple's issue description, full rejection reason, and next-steps text are retained only in private D1 fields and are never returned by the public API or displayed by the site. The public rejection detail is limited to the guideline code and title.
+Apple's issue description, full rejection reason, and next-steps text are retained only in private D1 fields and are never selected by the public build or displayed by the site. The public rejection detail is limited to the guideline code and title.
 
 Forwarding addresses are stored privately for operational tracing but never published. Raw MIME is retained privately for parser compatibility work, automatically deleted after seven days, and capped at the newest 1,000 unique messages. Developer names, forwarding addresses, raw messages, and organization UUIDs are not published. Canonical App Store submission IDs are the D1 primary keys and deduplicate records.
 
@@ -35,24 +37,34 @@ npm install
 npm run cf-types
 npm run db:migrate:local
 npm run db:seed:local
+npm run build:data:local
 npm run dev
 ```
 
-Run checks with `npm run check`.
+Run checks with `npm run check`. `npm run build:data` refreshes `public/review-data.js` from production D1; `npm run build:data:local` uses the local D1 database.
+
+## Production snapshot build
+
+The scheduled local task runs daily at 03:17 Asia/Tokyo using the authenticated Cloudflare session on its host. It builds and deploys from a temporary clone of `origin/master`, so the saved project checkout and its uncommitted work are not modified. A manual production refresh uses the same three commands shown below.
+
+The build refuses to deploy an empty result, duplicate Submission IDs, malformed timestamps, unexpected statuses, or non-HTTPS icon URLs. Its SQL projection intentionally omits forwarding addresses, organization UUIDs, raw messages, issue descriptions, full rejection reasons, and next steps.
 
 ## Cloudflare resources
 
 - Worker: `review-vg`
 - D1: `review-vg`, binding `DB`
-- Static assets: `public/`, binding `ASSETS`
+- Static assets: `public/`, served directly before the Worker
 - Custom domain: `review.vg`
 - Email Routing rule: `*@review.vg` → Worker `review-vg`
 - Hourly cron: purge raw messages older than seven days and enforce the 1,000-message cap
+- Daily Codex project schedule: rebuild the public snapshot and deploy
 
 Apply production migrations before deploying a schema-dependent Worker:
 
 ```sh
 npm run db:migrate:remote
+npm run build:data
+npm run check
 npm run deploy
 ```
 

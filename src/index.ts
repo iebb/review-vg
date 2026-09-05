@@ -9,23 +9,6 @@ const RAW_EMAIL_MAX_MESSAGES = 1000;
 const RAW_EMAIL_CHUNK_BYTES = 1_500_000;
 const APP_METADATA_BACKFILL_LIMIT = 50;
 
-interface TimelineEventRow {
-  submission_id: string;
-  app_name: string | null;
-  platform: string;
-  app_store_id: string | null;
-  app_icon_url: string | null;
-  app_category: string | null;
-  app_version: string | null;
-  status: "issue" | "success";
-  submitted_at: string | null;
-  latest_event_at: string;
-  guideline_code: string | null;
-  guideline_title: string | null;
-  has_approved: number;
-  in_timeline: number;
-}
-
 interface ForwardingSourceEmail {
   from?: { address?: string };
   headers: Array<{ key: string; value: string }>;
@@ -45,31 +28,18 @@ interface ExistingMetadataRow {
 }
 
 export default {
-  async fetch(request, env): Promise<Response> {
-    const url = new URL(request.url);
-    if (url.pathname === "/api/timeline" && request.method === "GET") {
-      return getTimeline(env);
-    }
-    if (url.pathname.startsWith("/api/")) {
-      return json({ error: "Not found" }, 404);
-    }
-    const asset = await env.ASSETS.fetch(request);
-    const headers = new Headers(asset.headers);
-    headers.set(
-      "Content-Security-Policy",
-      "default-src 'self'; script-src 'self' 'sha256-QGAU6PUlGYjzt0NWbi2AY+wSGznvW/sg4UjZNfv+gj4=' https://www.googletagmanager.com; style-src 'self'; img-src 'self' data: https://*.mzstatic.com https://*.google-analytics.com https://www.googletagmanager.com; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'",
-    );
-    headers.set("Permissions-Policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=()");
-    headers.set("Referrer-Policy", "no-referrer");
-    headers.set("X-Content-Type-Options", "nosniff");
-    headers.set("X-Frame-Options", "DENY");
-    if (url.pathname === "/" || url.pathname === "/index.html") {
-      headers.set("Link", '<https://review.vg/>; rel="canonical"');
-    }
-    if (url.pathname.endsWith(".css") || url.pathname.endsWith(".js")) {
-      headers.set("Cache-Control", "public, max-age=3600, must-revalidate");
-    }
-    return new Response(asset.body, { status: asset.status, statusText: asset.statusText, headers });
+  async fetch(): Promise<Response> {
+    return new Response("Not found", {
+      status: 404,
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Type": "text/plain; charset=utf-8",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "X-Robots-Tag": "noindex, nofollow",
+      },
+    });
   },
 
   async email(message, env): Promise<void> {
@@ -270,66 +240,6 @@ function boundedArchiveValue(value: string | null, maximumLength: number): strin
   return typeof value === "string" ? value.slice(0, maximumLength) : null;
 }
 
-export async function getTimeline(env: Pick<Env, "DB">): Promise<Response> {
-  const result = await env.DB.prepare(
-    `WITH app_states AS (
-       SELECT app_store_id,
-              MAX(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS has_approved,
-              MAX(julianday(COALESCE(submitted_at, latest_event_at))) AS latest_submission_at
-         FROM reviews
-        WHERE app_store_id IS NOT NULL
-        GROUP BY app_store_id
-     )
-     SELECT r.submission_id, r.app_name,
-            r.platform, r.app_store_id, r.app_version, r.status, r.submitted_at,
-            r.latest_event_at, r.guideline_code, r.guideline_title, states.has_approved,
-            metadata.app_icon_url,
-            metadata.app_category,
-            CASE
-              WHEN julianday(COALESCE(r.submitted_at, r.latest_event_at)) >=
-                   julianday('now', '-6 months')
-               AND (
-                 states.has_approved = 1 OR
-                 states.latest_submission_at >= julianday('now', '-60 days')
-               )
-              THEN 1
-              ELSE 0
-            END AS in_timeline
-       FROM reviews AS r
-       JOIN app_states AS states ON states.app_store_id = r.app_store_id
-       LEFT JOIN app_metadata AS metadata ON metadata.app_store_id = r.app_store_id
-      ORDER BY latest_event_at ASC`,
-  ).all<TimelineEventRow>();
-
-  const publicEvents = result.results.map((event) => ({
-    submissionId: event.submission_id,
-    appName: event.app_name,
-    hasApproved: event.has_approved === 1,
-    platform: event.platform,
-    appStoreId: event.app_store_id,
-    appIconUrl: event.app_icon_url,
-    appCategory: event.app_category,
-    appVersion: event.app_version,
-    status: event.status,
-    submittedAt: event.submitted_at,
-    occurredAt: event.latest_event_at,
-    guidelineCode: event.status === "issue" ? event.guideline_code : null,
-    guidelineTitle: event.status === "issue" ? event.guideline_title : null,
-  }));
-
-  return json(
-    {
-      events: publicEvents.filter((_event, index) => result.results[index].in_timeline === 1),
-      leaderboardEvents: publicEvents,
-    },
-    200,
-    {
-      "Cache-Control": "public, max-age=30, s-maxage=60",
-      "X-Robots-Tag": "noindex, nofollow",
-    },
-  );
-}
-
 async function ensureApprovedAppMetadata(
   db: D1Database,
   reviews: ParsedReviewEmail[],
@@ -517,17 +427,4 @@ export function isReviewRecipient(value: string): boolean {
   if (!address) return false;
   const at = address.lastIndexOf("@");
   return at > 0 && address.slice(at + 1) === "review.vg";
-}
-
-function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
-  return Response.json(body, {
-    status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "X-Content-Type-Options": "nosniff",
-      "X-Frame-Options": "DENY",
-      "Referrer-Policy": "no-referrer",
-      ...extraHeaders,
-    },
-  });
 }

@@ -16,15 +16,15 @@ describe("Google Analytics tag", () => {
 
   it("authorizes the exact inline initializer without unsafe-inline", async () => {
     const html = await readFile(new URL("public/index.html", projectUrl), "utf8");
-    const worker = await readFile(new URL("src/index.ts", projectUrl), "utf8");
+    const headers = await readFile(new URL("public/_headers", projectUrl), "utf8");
     const match = html.match(/<script>\n([\s\S]*?gtag\('config', 'G-JPGZDW16JY'\);\n\s*)<\/script>/);
 
     expect(match).not.toBeNull();
     const digest = createHash("sha256").update(match![1]).digest("base64");
-    expect(worker).toContain(`'sha256-${digest}'`);
-    expect(worker).not.toContain("'unsafe-inline'");
-    expect(worker).toContain("https://www.googletagmanager.com");
-    expect(worker).toContain("https://*.google-analytics.com");
-    expect(worker).toContain("https://*.analytics.google.com");
+    expect(headers).toContain(`'sha256-${digest}'`);
+    expect(headers).not.toContain("'unsafe-inline'");
+    expect(headers).toContain("https://www.googletagmanager.com");
+    expect(headers).toContain("https://*.google-analytics.com");
+    expect(headers).toContain("https://*.analytics.google.com");
   });
 });
